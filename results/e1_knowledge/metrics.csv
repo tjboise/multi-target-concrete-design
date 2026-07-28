@@ -1,0 +1,2 @@
+experiment,HV_llm,HV_nsga,HV_ratio,GD,IGD,spread,non_dom_rate,n_pareto_llm,n_pareto_nsga,total_calls
+e1_knowledge,12682.7809,23858.8404,0.5316,0.479085,0.381444,2.5698,0.2667,4,98,30
