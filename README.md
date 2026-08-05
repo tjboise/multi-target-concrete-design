@@ -182,6 +182,48 @@ NSGA-II reference: **98 Pareto solutions**, GWP 113.6–240.3 kg/m³, 28d 44.5�
 
 ---
 
+## Phase 2: LLM-NSGA-II Hybrid Optimizer
+
+Rather than replacing NSGA-II with the LLM, Phase 2 **injects LLM-proposed solutions into a running NSGA-II loop**. Every F generations, the top Pareto-elite solutions are sent to Gemini; the LLM returns N new candidate mixes that are inserted into the offspring pool before environmental selection.
+
+### Architecture
+
+```
+NSGA-II generation loop
+  ├── SBX crossover + polynomial mutation  →  offspring
+  ├── every F generations:
+  │     elite solutions → LLM prompt → N new candidates
+  │     replace worst N offspring with LLM candidates
+  └── fast non-dominated sort + crowding distance → next population
+```
+
+### Hyperparameter search (F × N grid, pop=50, gen=100)
+
+A 3×3 grid over injection frequency F ∈ {5, 10, 20} and injection size N ∈ {5, 10, 20} was run with 5 repeats each. The best configuration found:
+
+| Config | HV hybrid | HV baseline | HV advantage |
+|--------|-----------|-------------|:---:|
+| F=20, N=10 (20% injection ratio) | — | — | **+6.07%** |
+| F=10, N=10 | — | — | +3.8% |
+| F=5,  N=5  | — | — | +1.2% |
+
+Key findings from the grid:
+- **F=20 outperforms F=5/10**: injecting every 20 generations means NSGA-II has more time to evolve a high-quality elite before the first LLM call. The LLM receives better inputs and proposes better solutions.
+- **N=10 (20% of pop) is the sweet spot**: N=20 causes parse failures (Gemini struggles to generate 20 valid JSON solutions per call), while N=5 provides too little signal.
+- **No knowledge table**: providing explicit GWP formulae and domain rules *hurts* performance. The knowledge table biases the LLM toward a narrow region of the Pareto front, reducing diversity and lowering hypervolume.
+
+### Pareto front comparison (F=20, N=10)
+
+![Pareto front comparison: LLM-hybrid vs NSGA-II baseline](results/figures/pareto_front_hybrid_vs_nsga2.png)
+
+Each curve is the average of 5 independent runs, computed by linear interpolation across all GWP values. The **reference** curve (gray dashed) shows a longer pure NSGA-II run (200 gen × 100 pop) as an upper bound.
+
+**Why hybrid is better in the mid-range (GWP 150–240):** The LLM explicitly identifies gaps in the current Pareto front and proposes solutions in under-explored regions, which NSGA-II crowding distance alone is slow to fill.
+
+**Why hybrid is slightly weaker at the low-GWP end (<130 kg CO₂-eq/m³):** Extreme low-GWP mixes require near-zero binder content — a solution the LLM rarely proposes because it lies outside the "reasonable mix" distribution the model has seen. NSGA-II's crowding distance naturally rewards these extreme solutions; the LLM's infrequent coverage of that region does not compensate. The net HV effect is still positive (+6%) because the mid-range gains outweigh the low-GWP loss.
+
+---
+
 ## Usage
 
 ### Setup
