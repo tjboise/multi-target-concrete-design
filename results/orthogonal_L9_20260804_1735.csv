@@ -1,0 +1,2 @@
+run_id,rep,gen,pop,F,N,HV_base,GD_base,IGD_base,HV_hybrid,HV_ratio,GD_hybrid,IGD_hybrid,n_pareto,llm_calls,parse_fails,HV_advantage,HV_pct_gain
+1,1,50,30,5,5,19688.7819,9.435197,11.264015,19581.3738,0.8207,7.764523,13.813285,30,10,0,-107.40810000000056,-0.5455294316607802

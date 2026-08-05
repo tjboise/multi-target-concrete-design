@@ -50,9 +50,7 @@ NSGA_CSV   = r"results\nsga2_reference.csv"
 
 
 def make_cfg(name: str, description: str, **kwargs) -> ExperimentConfig:
-    return ExperimentConfig(
-        name=name,
-        description=description,
+    defaults = dict(
         gemini_api_key=GEMINI_API_KEY,
         gemini_model=GEMINI_MODEL,
         max_iters=MAX_ITERS,
@@ -61,8 +59,9 @@ def make_cfg(name: str, description: str, **kwargs) -> ExperimentConfig:
         data_path=DATA_PATH,
         model_pkl=MODEL_PKL,
         output_prefix=os.path.join("results", name),
-        **kwargs,
     )
+    defaults.update(kwargs)   # kwargs override defaults (e.g. max_iters=60)
+    return ExperimentConfig(name=name, description=description, **defaults)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -124,6 +123,46 @@ EXPERIMENTS = {
         use_few_shot=True,
         targeting_mode="gap",
         rag_mode="none",
+    ),
+
+    # ── JSON-mode variants (fix parse failures) ───────────────
+
+    # E3-json: E3 + JSON mode with response_schema (enforces {"reasoning","mix"} structure)
+    "e3_json30": make_cfg(
+        "e3_json30",
+        "E3 + JSON mode with response_schema, 30 iters",
+        use_knowledge_table=True,
+        use_situation_rules=True,
+        use_few_shot=True,
+        targeting_mode="none",
+        rag_mode="none",
+        use_json_mode=True,
+    ),
+
+    # E3-json-60: JSON mode + schema, 60 iterations to observe HV convergence curve
+    "e3_json60": make_cfg(
+        "e3_json60",
+        "E3 + JSON mode with response_schema, 60 iters — HV convergence curve",
+        use_knowledge_table=True,
+        use_situation_rules=True,
+        use_few_shot=True,
+        targeting_mode="none",
+        rag_mode="none",
+        use_json_mode=True,
+        max_iters=60,
+    ),
+
+    # E3-60: no JSON mode, 60 iterations (baseline convergence reference)
+    "e3_60": make_cfg(
+        "e3_60",
+        "E3, no JSON mode, 60 iters — baseline HV convergence reference",
+        use_knowledge_table=True,
+        use_situation_rules=True,
+        use_few_shot=True,
+        targeting_mode="none",
+        rag_mode="none",
+        use_json_mode=False,
+        max_iters=60,
     ),
 }
 

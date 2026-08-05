@@ -83,6 +83,7 @@ class ExperimentConfig:
     targeting_mode: str = "none"    # "none" | "region" | "gap"
     rag_mode: str = "none"          # "none" | "static" | "dynamic"
     rag_k: int = 3
+    use_json_mode: bool = False     # force JSON response via response_mime_type
 
     # Paths
     data_path: str = r"Super_Cleaned_Concrete_Data - backup.csv"
@@ -625,13 +626,38 @@ def run_llm_pareto(raw_b: dict, der_b: dict, meta: dict,
 
     _client = genai.Client(api_key=cfg.gemini_api_key)
 
+    # Build response schema once so _make_chat can reference it
+    _json_schema = genai_types.Schema(
+        type=genai_types.Type.OBJECT,
+        properties={
+            "reasoning": genai_types.Schema(type=genai_types.Type.STRING),
+            "mix": genai_types.Schema(
+                type=genai_types.Type.OBJECT,
+                properties={
+                    v: genai_types.Schema(type=genai_types.Type.NUMBER)
+                    for v in RAW_VARS
+                },
+                required=RAW_VARS,
+            ),
+        },
+        required=["reasoning", "mix"],
+    ) if cfg.use_json_mode else None
+
     def _make_chat(temp):
+        extra = (
+            {
+                "response_mime_type": "application/json",
+                "response_schema": _json_schema,
+            }
+            if cfg.use_json_mode else {}
+        )
         return _client.chats.create(
             model=cfg.gemini_model,
             config=genai_types.GenerateContentConfig(
                 system_instruction=sys_prompt,
                 temperature=temp,
                 max_output_tokens=1024,
+                **extra,
             ),
         )
 

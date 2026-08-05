@@ -1,0 +1,261 @@
+﻿
+[Setup] Loading data and surrogate ...
+  Surrogate unit : kg/m3
+  Feature count  : 19
+  Dataset rows : 756
+  PC  range    : [97.3, 504.3] kg/m3
+  28d range    : [17.4, 106.1] MPa
+
+[Reference] Loading saved NSGA-II front from results\nsga2_reference.csv ...
+  Loaded 98 Pareto solutions
+
+  >>> Repeat 1/5
+
+##############################################################
+# hybrid_f10_n10
+# LLM-NSGA-II: intervene every 10 generations, inject 10 solutions
+##############################################################
+
+==============================================================
+  hybrid_f10_n10 (F=10, N=10)
+  Pop=100 | Gen=100 | LLM=yes
+==============================================================
+   Gen          HV  Pareto#  Note
+  ---------------------------------------------
+     1     15801.9        6  
+    10     17612.8       25  +LLM×10
+    20     19012.7       47  +LLM×10
+    30     20081.8       76  +LLM×10
+    40     20679.1       99  +LLM×10
+    50     21067.1      100  +LLM×10
+    60     21312.1      100  +LLM×10
+    70     21485.3      100  +LLM×10
+    80     21691.1      100  +LLM×10
+    90     21806.1      100  +LLM×10
+   100     21956.7      100  +LLM×10
+
+  LLM calls: 10  Parse fails: 0
+  Final Pareto: 100 solutions  HV: 21956.7
+
+  Saved -> results\hybrid_f10_n10_p100_g100_r1/
+    HV_hybrid           : 21956.6653
+    HV_nsga             : 23858.8404
+    HV_ratio            : 0.9203
+    GD                  : 2.212385
+    IGD                 : 3.790698
+    spread              : 0.8169
+    n_pareto            : 100
+    n_nsga              : 98
+    llm_calls           : 10
+    parse_fails         : 0
+
+  >>> Repeat 2/5
+
+##############################################################
+# hybrid_f10_n10
+# LLM-NSGA-II: intervene every 10 generations, inject 10 solutions
+##############################################################
+
+==============================================================
+  hybrid_f10_n10 (F=10, N=10)
+  Pop=100 | Gen=100 | LLM=yes
+==============================================================
+   Gen          HV  Pareto#  Note
+  ---------------------------------------------
+     1     15884.1        9  
+    10     18129.2       31  +LLM×10
+    20     19932.5       35  +LLM×10
+    30     20608.1       60  +LLM×10
+    40     20858.1       84  +LLM×10
+    50     21102.9       99  +LLM×10
+    60     21205.5      100  +LLM×10
+    70     21500.8      100  +LLM×10
+    80     21552.6      100  +LLM×10
+    90     21670.9      100  +LLM×10
+   100     21902.2      100  +LLM×10
+
+  LLM calls: 10  Parse fails: 0
+  Final Pareto: 100 solutions  HV: 21902.2
+
+  Saved -> results\hybrid_f10_n10_p100_g100_r2/
+    HV_hybrid           : 21902.225
+    HV_nsga             : 23858.8404
+    HV_ratio            : 0.918
+    GD                  : 3.468888
+    IGD                 : 3.764664
+    spread              : 0.866
+    n_pareto            : 100
+    n_nsga              : 98
+    llm_calls           : 10
+    parse_fails         : 0
+
+  >>> Repeat 3/5
+
+##############################################################
+# hybrid_f10_n10
+# LLM-NSGA-II: intervene every 10 generations, inject 10 solutions
+##############################################################
+
+==============================================================
+  hybrid_f10_n10 (F=10, N=10)
+  Pop=100 | Gen=100 | LLM=yes
+==============================================================
+   Gen          HV  Pareto#  Note
+  ---------------------------------------------
+     1     16247.4        8  
+    10     18274.7       23  +LLM×10
+    20     19525.1       49  +LLM×10
+    30     20291.8       87  +LLM×10
+    40     20637.5       86  +LLM×10
+    50     20799.1      100  +LLM×10
+    60     21028.0      100  +LLM×10
+    70     21725.2      100  +LLM×10
+    80     21792.1      100  +LLM×10
+    90     21809.6      100  +LLM×10
+   100     21884.7      100  +LLM×10
+
+  LLM calls: 10  Parse fails: 0
+  Final Pareto: 100 solutions  HV: 21884.7
+
+  Saved -> results\hybrid_f10_n10_p100_g100_r3/
+    HV_hybrid           : 21884.6668
+    HV_nsga             : 23858.8404
+    HV_ratio            : 0.9173
+    GD                  : 3.757682
+    IGD                 : 4.290646
+    spread              : 0.8524
+    n_pareto            : 100
+    n_nsga              : 98
+    llm_calls           : 10
+    parse_fails         : 0
+
+  >>> Repeat 4/5
+
+##############################################################
+# hybrid_f10_n10
+# LLM-NSGA-II: intervene every 10 generations, inject 10 solutions
+##############################################################
+
+==============================================================
+  hybrid_f10_n10 (F=10, N=10)
+  Pop=100 | Gen=100 | LLM=yes
+==============================================================
+   Gen          HV  Pareto#  Note
+  ---------------------------------------------
+     1     16078.2        6  
+    10     19523.2       42  +LLM×10
+    20     20246.4       78  +LLM×10
+    30     20655.2      100  +LLM×10
+    40     21250.6      100  +LLM×10
+    50     21589.2      100  +LLM×10
+    60     21732.0      100  +LLM×10
+    70     21845.6      100  +LLM×10
+    80     22102.9      100  +LLM×10
+    90     22185.5      100  +LLM×10
+   100     22316.6      100  +LLM×10
+
+  LLM calls: 10  Parse fails: 0
+  Final Pareto: 100 solutions  HV: 22316.6
+
+  Saved -> results\hybrid_f10_n10_p100_g100_r4/
+    HV_hybrid           : 22316.5548
+    HV_nsga             : 23858.8404
+    HV_ratio            : 0.9354
+    GD                  : 11.132072
+    IGD                 : 4.997456
+    spread              : 1.4504
+    n_pareto            : 100
+    n_nsga              : 98
+    llm_calls           : 10
+    parse_fails         : 0
+
+  >>> Repeat 5/5
+
+##############################################################
+# hybrid_f10_n10
+# LLM-NSGA-II: intervene every 10 generations, inject 10 solutions
+##############################################################
+
+==============================================================
+  hybrid_f10_n10 (F=10, N=10)
+  Pop=100 | Gen=100 | LLM=yes
+==============================================================
+   Gen          HV  Pareto#  Note
+  ---------------------------------------------
+     1     15369.8       14  
+    10     16781.4       22  +LLM×10
+    20     19180.7       54  +LLM×10
+    30     20231.8       55  +LLM×10
+    40     20755.5       83  +LLM×10
+    50     21126.5      100  +LLM×10
+    60     21248.6      100  +LLM×10
+    70     21417.4      100  +LLM×10
+    80     21673.0      100  +LLM×10
+    90     21780.1      100  +LLM×10
+   100     21845.0      100  +LLM×10
+
+  LLM calls: 10  Parse fails: 0
+  Final Pareto: 100 solutions  HV: 21845.0
+
+  Saved -> results\hybrid_f10_n10_p100_g100_r5/
+    HV_hybrid           : 21845.0358
+    HV_nsga             : 23858.8404
+    HV_ratio            : 0.9156
+    GD                  : 3.938734
+    IGD                 : 3.872643
+    spread              : 0.9749
+    n_pareto            : 100
+    n_nsga              : 98
+    llm_calls           : 10
+    parse_fails         : 0
+
+==============================================================
+  HYBRID EXPERIMENT SUMMARY
+==============================================================
+
+  hybrid_f10_n10:
+    HV_hybrid           : 21956.6653
+    HV_ratio            : 0.9203
+    GD                  : 2.2124
+    IGD                 : 3.7907
+    n_pareto            : 100
+    llm_calls           : 10
+    parse_fails         : 0
+
+  hybrid_f10_n10:
+    HV_hybrid           : 21902.2250
+    HV_ratio            : 0.9180
+    GD                  : 3.4689
+    IGD                 : 3.7647
+    n_pareto            : 100
+    llm_calls           : 10
+    parse_fails         : 0
+
+  hybrid_f10_n10:
+    HV_hybrid           : 21884.6668
+    HV_ratio            : 0.9173
+    GD                  : 3.7577
+    IGD                 : 4.2906
+    n_pareto            : 100
+    llm_calls           : 10
+    parse_fails         : 0
+
+  hybrid_f10_n10:
+    HV_hybrid           : 22316.5548
+    HV_ratio            : 0.9354
+    GD                  : 11.1321
+    IGD                 : 4.9975
+    n_pareto            : 100
+    llm_calls           : 10
+    parse_fails         : 0
+
+  hybrid_f10_n10:
+    HV_hybrid           : 21845.0358
+    HV_ratio            : 0.9156
+    GD                  : 3.9387
+    IGD                 : 3.8726
+    n_pareto            : 100
+    llm_calls           : 10
+    parse_fails         : 0
+
+  Summary saved -> results\hybrid_summary_20260804_2235.csv
