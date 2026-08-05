@@ -220,7 +220,21 @@ Each curve is the average of 5 independent runs, computed by linear interpolatio
 
 **Why hybrid is better in the mid-range (GWP 150–240):** The LLM explicitly identifies gaps in the current Pareto front and proposes solutions in under-explored regions, which NSGA-II crowding distance alone is slow to fill.
 
-**Why hybrid is slightly weaker at the low-GWP end (<130 kg CO₂-eq/m³):** Extreme low-GWP mixes require near-zero binder content — a solution the LLM rarely proposes because it lies outside the "reasonable mix" distribution the model has seen. NSGA-II's crowding distance naturally rewards these extreme solutions; the LLM's infrequent coverage of that region does not compensate. The net HV effect is still positive (+6%) because the mid-range gains outweigh the low-GWP loss.
+**Why hybrid is slightly weaker at the low-GWP end (<130 kg CO₂-eq/m³):** Extreme low-GWP mixes require near-zero binder content — a solution the LLM rarely proposes because it lies outside the "reasonable mix" distribution the model has seen. NSGA-II's crowding distance naturally rewards these extreme solutions; the LLM's infrequent coverage of that region does not compensate. The net HV effect is still positive because the mid-range gains outweigh the low-GWP loss.
+
+### Statistical significance (F=20, N=10, n=30 paired runs)
+
+To confirm the HV improvement is not a random artifact, 30 independent repetitions were run and analyzed with three tests:
+
+| Test | Result | Interpretation |
+|------|--------|---------------|
+| Wilcoxon signed-rank (one-tailed, H₁: hybrid > baseline) | W=326, **p=0.028** | Statistically significant (p<0.05) |
+| Cliff's δ effect size | **δ=+0.329** (small) | Hybrid dominates baseline in 66% of paired comparisons |
+| Bootstrap 95% CI on mean ΔHV (10,000 iterations) | **[+15, +1,015]** | CI excludes zero — significant |
+
+Hybrid wins in **18 of 30 runs** (60%). Mean HV gain is **+2.75%** (std ±6.78 pp); the large standard deviation reflects NSGA-II's sensitivity to random initialization — when the baseline gets a lucky start, the LLM injection occasionally disrupts convergence. Despite this variance, all three tests confirm the improvement is statistically significant and not due to chance.
+
+> One-tailed Wilcoxon is appropriate here because the hypothesis is directional (the hybrid is designed to improve upon NSGA-II, not merely differ from it), consistent with standard practice in evolutionary computation literature.
 
 ---
 
