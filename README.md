@@ -309,22 +309,22 @@ All 5 runs pooled; curves are PCHIP-smoothed non-dominated fronts. Two effects a
 
 The hybrid HV begins to separate from the baseline around generation 20–30, after the first two LLM injections. The improvement accumulates gradually across subsequent injections rather than appearing as a single large jump — consistent with the finding that injected solutions require a few generations to propagate through the population. Final HV: **19,734 (hybrid)** vs **18,860 (baseline)**, a +4.6% gain.
 
-**HV gain per injection interval** (mean across 5 reps, F=10, N=5):
+**HV gap: Hybrid vs Baseline at each checkpoint** (mean across 5 reps, F=10, N=5):
 
-| Generations | Event | HV start | HV end | ΔHV | Δ% |
-|:-----------:|:------|---------:|-------:|----:|---:|
-| 0 → 10  | Pre-injection (NSGA-II only) | 13,315 | 15,312 | +1,998 | +15.00% |
-| 10 → 20 | Injection 1 | 15,312 | 17,193 | +1,881 | +12.28% |
-| 20 → 30 | Injection 2 | 17,193 | 17,944 | +751  | +4.36%  |
-| 30 → 40 | Injection 3 | 17,944 | 18,501 | +557  | +3.10%  |
-| 40 → 50 | Injection 4 | 18,501 | 18,926 | +425  | +2.30%  |
-| 50 → 60 | Injection 5 | 18,926 | 19,253 | +327  | +1.73%  |
-| 60 → 70 | Injection 6 | 19,253 | 19,450 | +197  | +1.02%  |
-| 70 → 80 | Injection 7 | 19,450 | 19,595 | +145  | +0.75%  |
-| 80 → 90 | Injection 8 | 19,595 | 19,683 | +88   | +0.45%  |
-| 90 → 100| Injection 9 | 19,683 | 19,734 | +51   | +0.26%  |
+| Generation | Event | Baseline HV | Hybrid HV | Gap (HV) | Gap (%) |
+|:----------:|:------|------------:|----------:|---------:|--------:|
+| 10  | After injection 1 | 15,499 | 15,312 |  −187 | −1.20% |
+| 20  | After injection 2 | 16,892 | 17,193 |  +302 | +1.79% |
+| 30  | After injection 3 | 17,572 | 17,944 |  +372 | +2.11% |
+| 40  | After injection 4 | 17,936 | 18,501 |  +565 | +3.15% |
+| 50  | After injection 5 | 18,205 | 18,926 |  +721 | +3.96% |
+| 60  | After injection 6 | 18,345 | 19,253 |  +908 | +4.95% |
+| 70  | After injection 7 | 18,463 | 19,450 |  +987 | +5.34% |
+| 80  | After injection 8 | 18,524 | 19,595 | +1,071 | +5.78% |
+| 90  | After injection 9 | 18,735 | 19,683 |  +947 | +5.06% |
+| 100 | Final             | 18,860 | 19,734 |  +874 | +4.63% |
 
-The marginal HV gain from each injection decreases monotonically — **diminishing returns** as the population converges. The first injection contributes the most (+12.3%), while later injections offer smaller refinements. This suggests that fewer, earlier injections may capture most of the benefit, supporting the lower parse-failure burden of smaller N.
+Three patterns are visible: (1) **Short-term disruption** — immediately after injection 1 (gen 10) the hybrid HV is −1.2% below baseline, as newly injected solutions have not yet propagated through selection pressure. (2) **Growing advantage** — the gap widens steadily from gen 20 to gen 80, peaking at +5.78%. (3) **Late-stage convergence** — the gap narrows slightly after gen 80 as the baseline continues to refine its well-converged population while the marginal benefit of later injections diminishes.
 
 #### Statistical significance (F × N grid, n=5 reps)
 
