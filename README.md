@@ -279,69 +279,68 @@ Each curve is the average of 5 independent runs, computed by linear interpolatio
 
 ### Results with physics constraints (F × N grid, SI dataset)
 
-After adding all three constraint layers (raw ingredient bounds, derived ratios, and physics constraints), the hyperparameter grid was re-run with pop=50, gen=100, 5 repeats. The physics constraints eliminate surrogate exploitation and force all solutions into the feasible region of the dataset.
+After adding all three constraint layers (raw ingredient bounds, derived ratios, and physics constraints), the hyperparameter grid was re-run with pop=50, gen=100, 5 repeats. The surrogate model was retrained on `Concrete_Data_SI.csv` (756 rows, native kg/m³) to eliminate the unit-mismatch introduced by the earlier lb/yd³ → kg/m³ conversion. HV is computed in the normalized [0, 1]² objective space using dataset-derived bounds (GWP: 169–534.5 kg CO₂/m³; 28d strength: 17.4–106.1 MPa), so HV values are directly comparable across experiments.
 
-**Grid summary (mean HV % gain, hybrid vs within-cell baseline):**
+**Grid summary (mean normalized HV % gain, hybrid vs within-cell baseline):**
 
 | | N=5 | N=10 | N=20 |
 |---|:---:|:---:|:---:|
-| **F=5** | −3.96% | +0.86% | −1.01%* |
-| **F=10** | **+4.97%** | +1.30% | −1.80%* |
-| **F=20** | +2.23% | +0.98% | −0.71%* |
+| **F=5**  | +1.46% | +0.86% | −4.05%\* |
+| **F=10** | +3.53% | **+4.30%** | +5.21%\* |
+| **F=20** | −1.11% | −1.23% | −0.77%\* |
 
-\* N=20 cells averaged 55 / 28 / 13 JSON parse failures per run (Gemini fails to return 20 valid solutions in one call), effectively reducing injection to zero.
+\* N=20 averaged 57 / 27 / 13 JSON parse failures per run (Gemini fails to return 20 valid solutions in one call), reducing effective injection count. F=10, N=20 shows the highest mean gain but also the highest variance (std ±11.4 pp) and 27 parse failures per run on average.
 
-**Best configuration: F=10, N=5** (mean +4.97% HV, std ±7.82%).  
-**Most stable configuration: F=20, N=5** (mean +2.23% HV, std ±1.91%, only 5 LLM calls per run).
+**Best reliable configuration: F=10, N=5** (mean +3.53% HV, std ±7.72%, zero parse failures).  
+**Most stable configuration: F=20, N=5** (mean −1.11% HV, std ±5.44%, only 5 LLM calls per run).
 
 #### Pareto front: hybrid vs baseline (F=10, N=5, physics-constrained)
 
 ![Pareto front: hybrid F=10,N=5 vs baseline, physics-constrained](results/figures/pareto_constrained_f10n5.png)
 
-All 5 runs pooled; curves are PCHIP-smoothed non-dominated fronts. Two effects are visible:
-
-1. **Higher maximum strength.** The hybrid reaches a 28-day strength of **69.9 MPa** vs **67.2 MPa** for the baseline (+4.0%), indicating LLM injection guides the search toward stronger mix designs.
-2. **Wider exploration range.** The hybrid Pareto front extends to GWP **263.8 kg CO₂-eq/m³**, compared to **234.5** for the baseline (+12.5%). The LLM proposes high-binder solutions that NSGA-II alone does not explore, expanding the coverage of the non-dominated front rather than merely improving it within the baseline's range.
+All 5 runs pooled; curves are PCHIP-smoothed non-dominated fronts. The hybrid pushes the high-strength end of the Pareto front: max 28-day strength reaches **98.5 MPa** vs **96.9 MPa** for the baseline (+1.7%). GWP coverage is comparable (hybrid [137.7, 283.0], baseline [136.0, 301.1] kg CO₂/m³), indicating the LLM's primary contribution is strength improvement rather than exploration of new GWP ranges in this run.
 
 #### Convergence curves (F=10, N=5)
 
 ![HV convergence: hybrid F=10,N=5 vs baseline, mean ± 1 SD](results/figures/convergence_constrained_f10n5.png)
 
-The hybrid HV begins to separate from the baseline around generation 20–30, after the first two LLM injections. The improvement accumulates gradually across subsequent injections rather than appearing as a single large jump — consistent with the finding that injected solutions require a few generations to propagate through the population. Final HV: **19,734 (hybrid)** vs **18,860 (baseline)**, a +4.6% gain.
+The hybrid separates from the baseline from generation 40 onward, after the fourth LLM injection. Final normalized HV: **0.8525 (hybrid)** vs **0.8253 (baseline)**, a **+3.3% gain**.
 
 **HV gap: Hybrid vs Baseline at each checkpoint** (mean across 5 reps, F=10, N=5):
 
-| Generation | Event | Baseline HV | Hybrid HV | Gap (HV) | Gap (%) |
-|:----------:|:------|------------:|----------:|---------:|--------:|
-| 10  | After injection 1 | 15,499 | 15,312 |  −187 | −1.20% |
-| 20  | After injection 2 | 16,892 | 17,193 |  +302 | +1.79% |
-| 30  | After injection 3 | 17,572 | 17,944 |  +372 | +2.11% |
-| 40  | After injection 4 | 17,936 | 18,501 |  +565 | +3.15% |
-| 50  | After injection 5 | 18,205 | 18,926 |  +721 | +3.96% |
-| 60  | After injection 6 | 18,345 | 19,253 |  +908 | +4.95% |
-| 70  | After injection 7 | 18,463 | 19,450 |  +987 | +5.34% |
-| 80  | After injection 8 | 18,524 | 19,595 | +1,071 | +5.78% |
-| 90  | After injection 9 | 18,735 | 19,683 |  +947 | +5.06% |
-| 100 | Final             | 18,860 | 19,734 |  +874 | +4.63% |
+| Generation | Event | Baseline HV | Hybrid HV | Gap (%) |
+|:----------:|:------|------------:|----------:|--------:|
+| 10  | After injection 1  | 0.6137 | 0.5872 | −4.32% |
+| 20  | After injection 2  | 0.6563 | 0.6401 | −2.47% |
+| 30  | After injection 3  | 0.7111 | 0.6827 | −4.00% |
+| 40  | After injection 4  | 0.7225 | 0.7343 | **+1.63%** |
+| 50  | After injection 5  | 0.7582 | 0.7574 | −0.11% |
+| 60  | After injection 6  | 0.7684 | 0.7988 | **+3.95%** |
+| 70  | After injection 7  | 0.7774 | 0.8175 | **+5.15%** |
+| 80  | After injection 8  | 0.8034 | 0.8355 | +3.99% |
+| 90  | After injection 9  | 0.8141 | 0.8455 | +3.86% |
+| 100 | Final              | 0.8253 | 0.8525 | +3.29% |
 
-Three patterns are visible: (1) **Short-term disruption** — immediately after injection 1 (gen 10) the hybrid HV is −1.2% below baseline, as newly injected solutions have not yet propagated through selection pressure. (2) **Growing advantage** — the gap widens steadily from gen 20 to gen 80, peaking at +5.78%. (3) **Late-stage convergence** — the gap narrows slightly after gen 80 as the baseline continues to refine its well-converged population while the marginal benefit of later injections diminishes.
+Three patterns are visible: (1) **Short-term disruption** — the hybrid HV falls below baseline for the first three injection intervals (gen 10–30), as newly injected solutions displace existing population members and require several generations to propagate. (2) **Growing advantage** — from gen 40 the gap turns consistently positive, peaking at +5.15% at gen 70. (3) **Late stabilisation** — the gap settles around +3–4% through gen 90–100 as both populations converge.
 
 #### Statistical significance (F × N grid, n=5 reps)
 
-Friedman test across all 10 configurations (NSGA-II + 9 hybrids): χ²=10.75, p=0.294 (ns).  
+Friedman test across 9 hybrid configurations: χ²=9.867, p=0.274 (ns).  
 Wilcoxon signed-rank test (paired within each cell, two-sided):
 
 | Configuration | HV baseline | HV hybrid | Δ% | p-value |
-|---|---:|---:|:---:|:---:|
-| F=5,  N=5  | 19,815 | 19,018 | −4.02% | 0.1875 |
-| F=5,  N=10 | 19,787 | 19,936 | +0.75% | 0.8125 |
-| F=5,  N=20 | 19,565 | 19,356 | −1.07% | 0.8125 |
-| **F=10, N=5**  | 18,860 | **19,734** | **+4.63%** | 0.1875 |
-| F=10, N=10 | 19,496 | 19,745 | +1.28% | 0.3125 |
-| F=10, N=20 | 19,494 | 19,147 | −1.78% | 0.3125 |
-| F=20, N=5  | 19,340 | 19,764 | +2.19% | 0.1250 |
-| F=20, N=10 | 19,222 | 19,399 | +0.92% | 0.6250 |
-| F=20, N=20 | 19,791 | 19,647 | −0.73% | 0.4375 |
+|---|:---:|:---:|:---:|:---:|
+| F=5,  N=5  | 0.7963 | 0.7982 | +0.24% | 1.0000 |
+| F=5,  N=10 | 0.7873 | 0.7859 | −0.18% | 0.6250 |
+| F=5,  N=20\* | 0.8344 | 0.7971 | −4.47% | 0.4375 |
+| **F=10, N=5**  | 0.7963 | **0.8219** | **+3.21%** | 0.4375 |
+| F=10, N=10 | 0.7983 | 0.8295 | +3.90% | 0.6250 |
+| F=10, N=20\* | 0.7972 | 0.8339 | +4.61% | 0.8125 |
+| F=20, N=5  | 0.8322 | 0.8221 | −1.22% | 1.0000 |
+| F=20, N=10 | 0.8556 | 0.8421 | −1.58% | 1.0000 |
+| F=20, N=20\* | 0.8491 | 0.8407 | −0.98% | 0.8125 |
+
+\* High parse-failure rate; effective N is much lower than nominal.
 
 > **Statistical power note:** With n=5, the minimum achievable two-sided Wilcoxon p-value is 0.0625. No configuration reaches p<0.05 at this sample size. The reference paper (Lu et al. 2026) used n=10 and achieved p=0.002 for their best config. **Planned: rerun with n=10 reps for publication-grade significance.**
 
