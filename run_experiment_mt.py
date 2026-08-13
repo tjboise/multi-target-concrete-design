@@ -29,7 +29,7 @@ load_dotenv()
 
 from optimizer_core_mt import (
     ExperimentConfig,
-    load_df, get_bounds, load_surrogate,
+    load_df, get_bounds, get_physics_bounds, load_surrogate,
     run_nsga2, run_llm_pareto,
     compute_metrics, save_results,
 )
@@ -44,7 +44,7 @@ MAX_ITERS      = 30
 NSGA_GENS      = 200
 NSGA_POP       = 100
 
-DATA_PATH  = r"Super_Cleaned_Concrete_Data - backup.csv"
+DATA_PATH  = r"Concrete_Data_SI.csv"
 MODEL_PKL  = r"..\low_carbon_concrete\concrete_catboost_optimized.pkl"
 NSGA_CSV   = r"results\nsga2_reference.csv"
 
@@ -209,6 +209,7 @@ def main():
     print("\n[Setup] Loading data and surrogate ...")
     df       = load_df(DATA_PATH)
     raw_b, der_b = get_bounds(df)
+    phys_b   = get_physics_bounds(df)
     meta     = load_surrogate(MODEL_PKL)
     print(f"  Dataset rows : {len(df)}")
     print(f"  PC  range    : [{raw_b['PC']['min']:.1f}, {raw_b['PC']['max']:.1f}] kg/m3")
@@ -222,7 +223,7 @@ def main():
         print(f"  Loaded {len(nsga_front)} Pareto solutions")
     else:
         first_cfg  = next(iter(EXPERIMENTS.values()))
-        nsga_front = run_nsga2(raw_b, der_b, meta, first_cfg)
+        nsga_front = run_nsga2(raw_b, der_b, phys_b, meta, first_cfg)
         if nsga_front:
             pd.DataFrame(nsga_front).to_csv(NSGA_CSV, index=False)
             print(f"  Saved NSGA reference -> {NSGA_CSV}")

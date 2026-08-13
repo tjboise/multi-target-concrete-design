@@ -24,7 +24,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from optimizer_core_mt import load_df, get_bounds, load_surrogate
+from optimizer_core_mt import load_df, get_bounds, get_physics_bounds, load_surrogate
 from optimizer_hybrid_mt import (
     HybridConfig, run_hybrid, compute_hybrid_metrics, save_hybrid_results,
 )
@@ -32,7 +32,7 @@ from optimizer_hybrid_mt import (
 # ── Shared settings ────────────────────────────────────────────
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 GEMINI_MODEL   = "gemini-2.5-flash-lite"
-DATA_PATH      = r"Super_Cleaned_Concrete_Data - backup.csv"
+DATA_PATH      = r"Concrete_Data_SI.csv"
 MODEL_PKL      = r"..\low_carbon_concrete\concrete_catboost_optimized.pkl"
 NSGA_REF_CSV   = r"results\nsga2_reference.csv"
 
@@ -65,16 +65,16 @@ def _make_cfg(F: int, N: int, rep: int, mode: str) -> HybridConfig:
 
 
 def run_cell(F: int, N: int, rep: int,
-             raw_b, der_b, meta, nsga_ref) -> dict:
+             raw_b, der_b, phys_b, meta, nsga_ref) -> dict:
     # ── Baseline ───────────────────────────────────────────────
     base_cfg = _make_cfg(F, N, rep, "baseline")
-    base_res = run_hybrid(raw_b, der_b, meta, base_cfg)
+    base_res = run_hybrid(raw_b, der_b, phys_b, meta, base_cfg)
     base_m   = compute_hybrid_metrics(base_res, nsga_ref)
     save_hybrid_results(base_res, base_m, base_cfg, nsga_ref)
 
     # ── Hybrid ─────────────────────────────────────────────────
     hyb_cfg = _make_cfg(F, N, rep, "hybrid")
-    hyb_res = run_hybrid(raw_b, der_b, meta, hyb_cfg)
+    hyb_res = run_hybrid(raw_b, der_b, phys_b, meta, hyb_cfg)
     hyb_m   = compute_hybrid_metrics(hyb_res, nsga_ref)
     save_hybrid_results(hyb_res, hyb_m, hyb_cfg, nsga_ref)
 
@@ -98,7 +98,7 @@ def run_cell(F: int, N: int, rep: int,
 
 def print_summary(df: pd.DataFrame):
     print(f"\n{'='*70}")
-    print(f"  F×N GRID SUMMARY  pop={POP} gen={GEN}  no-knowledge-table")
+    print(f"  FxN GRID SUMMARY  pop={POP} gen={GEN}  no-knowledge-table")
     print(f"  (mean ± std over {df['rep'].max()} repeats)")
     print(f"{'='*70}")
     grp = df.groupby(["F", "N", "N_over_pop"]).agg(
@@ -138,6 +138,7 @@ def main():
     print(f"\n[Setup] Loading data and surrogate ...")
     df           = load_df(DATA_PATH)
     raw_b, der_b = get_bounds(df)
+    phys_b       = get_physics_bounds(df)
     meta         = load_surrogate(MODEL_PKL)
     print(f"  Dataset rows : {len(df)}")
     print(f"  pop={POP}  gen={GEN}  prompt=no-knowledge-table")
@@ -153,17 +154,17 @@ def main():
 
     rep_range = range(args.rep_start, args.rep_start + args.repeat)
     total = len(f_levels) * len(n_levels) * args.repeat
-    print(f"\n[Plan] {len(f_levels)}×{len(n_levels)} grid × reps {args.rep_start}–{args.rep_start+args.repeat-1} "
-          f"× 2 modes = {total * 2} total runs\n")
+    print(f"\n[Plan] {len(f_levels)}x{len(n_levels)} grid x reps {args.rep_start}-{args.rep_start+args.repeat-1} "
+          f"x 2 modes = {total * 2} total runs\n")
 
     all_rows = []
     for F in f_levels:
         for N in n_levels:
-            print(f"\n{'─'*70}")
+            print(f"\n{'='*70}")
             print(f"  F={F}  N={N}  (N/pop={N/POP:.0%})")
-            print(f"{'─'*70}")
+            print(f"{'='*70}")
             for rep in rep_range:
-                result = run_cell(F, N, rep, raw_b, der_b, meta, nsga_ref)
+                result = run_cell(F, N, rep, raw_b, der_b, phys_b, meta, nsga_ref)
                 all_rows.append(result)
 
     df_out   = pd.DataFrame(all_rows)

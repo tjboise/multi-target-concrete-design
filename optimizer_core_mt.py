@@ -46,6 +46,15 @@ GWP_FACTORS = {
 RAW_VARS     = ["PC", "FA", "SC", "FAGG", "CAGG", "WATER", "AEA", "WR_HR", "WR", "ACC"]
 DERIVED_VARS = ["w/b", "b/a", "SCM%", "CAGG%", "FAGG%", "PC%", "FA%", "SC%"]
 
+# Material densities (kg/m³) from Pfeiffer et al. 2024, Table 4
+DENSITIES = {
+    "PC": 3150, "FA": 2200, "SC": 2900,
+    "FAGG": 2650, "CAGG": 2650, "WATER": 1000,
+    "AEA": 1010, "WR_HR": 1080, "WR": 1140, "ACC": 1340,
+}
+# Physics-based derived quantities used as additional constraints
+PHYSICS_VARS = ["solid_vol", "Vagg", "TOTAL_BINDER", "ACC_pct"]
+
 # HV reference point in [GWP, -28d_strength] minimization space.
 # Must be WORSE (larger) than any feasible solution in both dimensions.
 #   GWP ref = 500  → all solutions have GWP < 500
@@ -86,7 +95,7 @@ class ExperimentConfig:
     use_json_mode: bool = False     # force JSON response via response_mime_type
 
     # Paths
-    data_path: str = r"Super_Cleaned_Concrete_Data - backup.csv"
+    data_path: str = r"Concrete_Data_SI.csv"
     model_pkl: str = r"..\low_carbon_concrete\concrete_catboost_optimized.pkl"
     output_prefix: str = r"results\e0_baseline"
 
@@ -97,9 +106,7 @@ class ExperimentConfig:
 
 def load_df(path: str) -> pd.DataFrame:
     df = pd.read_csv(path)
-    for col in RAW_VARS:
-        if col in df.columns:
-            df[col] = df[col] * LB_YD3_TO_KG_M3
+    # Data is already in SI units (kg/m³) — no unit conversion needed
     return _add_derived(df)
 
 
@@ -189,6 +196,31 @@ def get_derived(mix: dict) -> dict:
     return {k: round(m[k], 5) for k in DERIVED_VARS}
 
 
+def get_physics(mix: dict) -> dict:
+    """Compute physics-based quantities: solid volume, aggregate volume, binder, ACC%."""
+    tb = mix.get("PC", 0.0) + mix.get("FA", 0.0) + mix.get("SC", 0.0)
+    return {
+        "solid_vol":    sum(mix.get(v, 0.0) / DENSITIES[v] for v in RAW_VARS),
+        "Vagg":         mix.get("FAGG", 0.0) / DENSITIES["FAGG"] + mix.get("CAGG", 0.0) / DENSITIES["CAGG"],
+        "TOTAL_BINDER": tb,
+        "ACC_pct":      mix.get("ACC", 0.0) / (tb + 1e-9),
+    }
+
+
+def get_physics_bounds(df: pd.DataFrame) -> dict:
+    """Compute physics constraint bounds from dataset statistics."""
+    tb      = df["PC"] + df["FA"] + df["SC"]
+    sv      = sum(df[v] / DENSITIES[v] for v in RAW_VARS)
+    vagg    = df["FAGG"] / DENSITIES["FAGG"] + df["CAGG"] / DENSITIES["CAGG"]
+    acc_pct = df["ACC"] / (tb + 1e-9)
+    return {
+        "solid_vol":    {"min": float(sv.min()),      "max": float(sv.max())},
+        "Vagg":         {"min": float(vagg.min()),    "max": float(vagg.max())},
+        "TOTAL_BINDER": {"min": float(tb.min()),      "max": float(tb.max())},
+        "ACC_pct":      {"min": float(acc_pct.min()), "max": float(acc_pct.max())},
+    }
+
+
 # ─────────────────────────────────────────────────────────────
 # 3. BOUNDS CHECK  (no strength constraint — it is now an objective)
 # ─────────────────────────────────────────────────────────────
@@ -262,7 +294,8 @@ def pareto_table_str(front: list) -> str:
 # 5. NSGA-II REFERENCE BASELINE
 # ─────────────────────────────────────────────────────────────
 
-def run_nsga2(raw_b: dict, der_b: dict, meta: dict, cfg: ExperimentConfig) -> list:
+def run_nsga2(raw_b: dict, der_b: dict, phys_b: dict,
+              meta: dict, cfg: ExperimentConfig) -> list:
     try:
         from pymoo.algorithms.moo.nsga2 import NSGA2
         from pymoo.core.problem import Problem
@@ -273,7 +306,7 @@ def run_nsga2(raw_b: dict, der_b: dict, meta: dict, cfg: ExperimentConfig) -> li
 
     xl  = np.array([raw_b[v]["min"] for v in RAW_VARS])
     xu  = np.array([raw_b[v]["max"] for v in RAW_VARS])
-    n_c = len(DERIVED_VARS) * 2     # lower + upper for each derived ratio
+    n_c = len(DERIVED_VARS) * 2 + len(PHYSICS_VARS) * 2
 
     class MixMOProblem(Problem):
         def __init__(self):
@@ -293,6 +326,10 @@ def run_nsga2(raw_b: dict, der_b: dict, meta: dict, cfg: ExperimentConfig) -> li
                 for v in DERIVED_VARS:
                     b = der_b[v]
                     gc += [b["min"] - dv[v], dv[v] - b["max"]]
+                pv = get_physics(mix)
+                for v in PHYSICS_VARS:
+                    b = phys_b[v]
+                    gc += [b["min"] - pv[v], pv[v] - b["max"]]
                 G.append(gc)
             out["F"] = np.array(F)
             out["G"] = np.array(G)
@@ -366,7 +403,7 @@ TO PUSH THE LOW-GWP END OF THE PARETO FRONT:
 TO PUSH THE HIGH-STRENGTH END OF THE PARETO FRONT:
   - Increase PC (strong strength boost, ~1.048 kg CO2 per kg added)
   - Reduce WATER (raises strength at zero GWP cost)
-  - Add ACC 100–400 kg/m3 (direct strength boost, zero GWP)
+  - Add ACC 1–15 kg/m3 (direct strength boost, zero GWP)
 """
 
 SITUATION_RULES = """\

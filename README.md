@@ -15,12 +15,63 @@ The LLM iteratively proposes concrete mixes and receives feedback about where ea
 **Variables (10 raw ingredients, kg/m³):**
 `PC`, `FA`, `SC`, `FAGG`, `CAGG`, `WATER`, `AEA`, `WR_HR`, `WR`, `ACC`
 
-**Constraints:** derived ratio bounds (w/b, b/a, SCM%, CAGG%, FAGG%, PC%, FA%, SC%) must stay within the ranges observed in the training dataset.
+**Constraints:** three layers of constraints enforced during optimization (all bounds derived from the training dataset, except where noted). See full details below.
 
 A solution **A dominates** solution **B** when:
 `A.GWP ≤ B.GWP` AND `A.28d ≥ B.28d` (with at least one strict inequality).
 
 The **Pareto front** is the set of all non-dominated solutions.
+
+---
+
+## Constraints
+
+Optimization constraints are applied in three layers. All bounds are derived from the 756-mix training dataset (`Concrete_Data_SI.csv`, SI units: kg/m³, MPa) unless stated otherwise. Material densities follow Pfeiffer et al. (2024), Table 4.
+
+### Layer 1 — Raw ingredient bounds
+
+Each of the 10 decision variables is bounded by the observed min/max in the dataset:
+
+| Variable | Description | Dataset min (kg/m³) | Dataset max (kg/m³) |
+|----------|-------------|--------------------:|--------------------:|
+| PC | Portland cement | 97.3 | 504.3 |
+| FA | Fly ash | 0.0 | 162.0 |
+| SC | Slag cement (GGBS) | 0.0 | 332.2 |
+| FAGG | Fine aggregate (sand) | 473.5 | 1067.9 |
+| CAGG | Coarse aggregate | 400.5 | 1364.6 |
+| WATER | Mix water | 90.8 | 214.8 |
+| AEA | Air-entraining agent | 0.0 | 1.5 |
+| WR\_HR | High-range water reducer (superplasticizer) | 0.0 | 4.7 |
+| WR | Water reducer | 0.0 | 7.8 |
+| ACC | Accelerator | 0.0 | 28.5 |
+
+### Layer 2 — Derived ratio constraints
+
+Eight dimensionless ratios must stay within their dataset ranges. These prevent physically degenerate mixes (e.g., zero binder, pure-aggregate mixes) without hard-coding domain-specific thresholds.
+
+| Ratio | Formula | Min | Max |
+|-------|---------|----:|----:|
+| w/b | WATER / (PC+FA+SC) | 0.235 | 0.714 |
+| b/a | (PC+FA+SC) / (FAGG+CAGG) | 0.105 | 0.488 |
+| SCM% | (FA+SC) / (PC+FA+SC) | 0.000 | 0.765 |
+| CAGG% | CAGG / (FAGG+CAGG) | 0.315 | 0.721 |
+| FAGG% | FAGG / (FAGG+CAGG) | 0.279 | 0.685 |
+| PC% | PC / (PC+FA+SC) | 0.235 | 1.000 |
+| FA% | FA / (PC+FA+SC) | 0.000 | 0.375 |
+| SC% | SC / (PC+FA+SC) | 0.000 | 0.717 |
+
+### Layer 3 — Physics constraints
+
+Four constraints derived from physical principles and material densities (Pfeiffer et al. 2024, Table 4). Bounds are taken from the dataset distribution.
+
+| Constraint | Formula | Min | Max | Physical meaning |
+|------------|---------|----:|----:|-----------------|
+| `solid_vol` | Σ(massᵢ / ρᵢ) for all 10 ingredients | 0.753 m³/m³ | 1.034 m³/m³ | Total solid volume cannot exceed 1 m³; remainder is air |
+| `Vagg` | (FAGG + CAGG) / 2650 | 0.413 m³/m³ | 0.778 m³/m³ | Volume of aggregates in the mix (ρFAGG = ρCAGG = 2650 kg/m³) |
+| `TOTAL_BINDER` | PC + FA + SC | 207.7 kg/m³ | 590.3 kg/m³ | Total cementitious content; prevents extreme binder reduction that fools the surrogate |
+| `ACC_pct` | ACC / (PC+FA+SC) | 0.000 | 0.061 | Accelerator dosage as a fraction of binder; caps surrogate exploitation via extreme ACC |
+
+**Rationale for Layer 3:** Without these constraints, the optimizer exploits the CatBoost surrogate by simultaneously minimizing binder (low GWP) and maximizing accelerator (ACC) to predict high strength — producing mixes with `TOTAL_BINDER` below 170 kg/m³ and `ACC` above 22 kg/m³, both far outside any real-world mix. The physics constraints close this exploitation gap.
 
 ---
 
@@ -212,9 +263,11 @@ Key findings from the grid:
 - **N=10 (20% of pop) is the sweet spot**: N=20 causes parse failures (Gemini struggles to generate 20 valid JSON solutions per call), while N=5 provides too little signal.
 - **No knowledge table**: providing explicit GWP formulae and domain rules *hurts* performance. The knowledge table biases the LLM toward a narrow region of the Pareto front, reducing diversity and lowering hypervolume.
 
-### Pareto front comparison (F=20, N=10)
+### Pareto front comparison — before physics constraints (F=20, N=10)
 
-![Pareto front comparison: LLM-hybrid vs NSGA-II baseline](results/figures/pareto_front_hybrid_vs_nsga2.png)
+> **Note:** The result below was produced **before** the Layer 3 physics constraints were added. The optimizer exploited the CatBoost surrogate by reducing binder to near-zero and inflating ACC, producing mixes that look good on paper but are physically implausible. It is kept here as a baseline for comparison with the constrained results that follow.
+
+![Pareto front comparison: LLM-hybrid vs NSGA-II baseline (pre-constraint)](results/figures/pareto_front_hybrid_vs_nsga2.png)
 
 Each curve is the average of 5 independent runs, computed by linear interpolation across all GWP values. The **reference** curve (gray dashed) shows a longer pure NSGA-II run (200 gen × 100 pop) as an upper bound.
 
@@ -222,7 +275,57 @@ Each curve is the average of 5 independent runs, computed by linear interpolatio
 
 **Why hybrid is slightly weaker at the low-GWP end (<130 kg CO₂-eq/m³):** Extreme low-GWP mixes require near-zero binder content — a solution the LLM rarely proposes because it lies outside the "reasonable mix" distribution the model has seen. NSGA-II's crowding distance naturally rewards these extreme solutions; the LLM's infrequent coverage of that region does not compensate. The net HV effect is still positive because the mid-range gains outweigh the low-GWP loss.
 
-### Statistical significance (F=20, N=10, n=30 paired runs)
+---
+
+### Results with physics constraints (F × N grid, SI dataset)
+
+After adding all three constraint layers (raw ingredient bounds, derived ratios, and physics constraints), the hyperparameter grid was re-run with pop=50, gen=100, 5 repeats. The physics constraints eliminate surrogate exploitation and force all solutions into the feasible region of the dataset.
+
+**Grid summary (mean HV % gain, hybrid vs within-cell baseline):**
+
+| | N=5 | N=10 | N=20 |
+|---|:---:|:---:|:---:|
+| **F=5** | −3.96% | +0.86% | −1.01%* |
+| **F=10** | **+4.97%** | +1.30% | −1.80%* |
+| **F=20** | +2.23% | +0.98% | −0.71%* |
+
+\* N=20 cells averaged 55 / 28 / 13 JSON parse failures per run (Gemini fails to return 20 valid solutions in one call), effectively reducing injection to zero.
+
+**Best configuration: F=10, N=5** (mean +4.97% HV, std ±7.82%).  
+**Most stable configuration: F=20, N=5** (mean +2.23% HV, std ±1.91%, only 5 LLM calls per run).
+
+#### Pareto front: hybrid vs baseline (F=10, N=5, physics-constrained)
+
+![Pareto front: hybrid F=10,N=5 vs baseline, physics-constrained](results/figures/pareto_constrained_f10n5.png)
+
+All 5 runs pooled (250 points per method). The hybrid pushes the high-strength end of the Pareto front further: max 28-day strength reaches **69.9 MPa** vs **67.2 MPa** for the baseline (+4.0%). The GWP range covered is similar across both methods (both bounded by the physics constraints).
+
+#### Convergence curves (F=10, N=5)
+
+![HV convergence: hybrid F=10,N=5 vs baseline, mean ± 1 SD](results/figures/convergence_constrained_f10n5.png)
+
+The hybrid HV begins to separate from the baseline around generation 20–30, after the first two LLM injections. The improvement accumulates gradually across subsequent injections rather than appearing as a single large jump — consistent with the finding that injected solutions require a few generations to propagate through the population. Final HV: **19,734 (hybrid)** vs **18,860 (baseline)**, a +4.6% gain.
+
+#### Statistical significance (F × N grid, n=5 reps)
+
+Friedman test across all 10 configurations (NSGA-II + 9 hybrids): χ²=10.75, p=0.294 (ns).  
+Wilcoxon signed-rank test (paired within each cell, two-sided):
+
+| Configuration | HV baseline | HV hybrid | Δ% | p-value |
+|---|---:|---:|:---:|:---:|
+| F=5,  N=5  | 19,815 | 19,018 | −4.02% | 0.1875 |
+| F=5,  N=10 | 19,787 | 19,936 | +0.75% | 0.8125 |
+| F=5,  N=20 | 19,565 | 19,356 | −1.07% | 0.8125 |
+| **F=10, N=5**  | 18,860 | **19,734** | **+4.63%** | 0.1875 |
+| F=10, N=10 | 19,496 | 19,745 | +1.28% | 0.3125 |
+| F=10, N=20 | 19,494 | 19,147 | −1.78% | 0.3125 |
+| F=20, N=5  | 19,340 | 19,764 | +2.19% | 0.1250 |
+| F=20, N=10 | 19,222 | 19,399 | +0.92% | 0.6250 |
+| F=20, N=20 | 19,791 | 19,647 | −0.73% | 0.4375 |
+
+> **Statistical power note:** With n=5, the minimum achievable two-sided Wilcoxon p-value is 0.0625. No configuration reaches p<0.05 at this sample size. The reference paper (Lu et al. 2026) used n=10 and achieved p=0.002 for their best config. **Planned: rerun with n=10 reps for publication-grade significance.**
+
+### Statistical significance (F=20, N=10, n=30 paired runs — pre-constraint)
 
 To confirm the HV improvement is not a random artifact, 30 independent repetitions were run and analyzed with three tests:
 

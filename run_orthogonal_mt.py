@@ -26,7 +26,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from optimizer_core_mt import load_df, get_bounds, load_surrogate
+from optimizer_core_mt import load_df, get_bounds, get_physics_bounds, load_surrogate
 from optimizer_hybrid_mt import (
     HybridConfig, run_hybrid, compute_hybrid_metrics, save_hybrid_results,
 )
@@ -34,7 +34,7 @@ from optimizer_hybrid_mt import (
 # ── Shared settings ────────────────────────────────────────────
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 GEMINI_MODEL   = "gemini-2.5-flash-lite"
-DATA_PATH      = r"Super_Cleaned_Concrete_Data - backup.csv"
+DATA_PATH      = r"Concrete_Data_SI.csv"
 MODEL_PKL      = r"..\low_carbon_concrete\concrete_catboost_optimized.pkl"
 NSGA_REF_CSV   = r"results\nsga2_reference.csv"
 
@@ -87,19 +87,19 @@ def _make_cfg(run_id: int, row: dict, rep: int, mode: str,
 
 
 def run_row(run_id: int, row: dict, rep: int,
-            raw_b, der_b, meta, nsga_ref, use_kt: bool = True) -> dict:
+            raw_b, der_b, phys_b, meta, nsga_ref, use_kt: bool = True) -> dict:
     """Run one (L9 row, repeat) pair — baseline + hybrid. Return metrics dict."""
     tag = f"r{run_id:02d}_g{row['gen']:03d}_p{row['pop']:03d}_f{row['F']:02d}_n{row['N']:02d}_rep{rep:02d}"
 
     # ── Baseline (pure NSGA-II) ────────────────────────────────
     base_cfg = _make_cfg(run_id, row, rep, "baseline", use_kt=use_kt)
-    base_res = run_hybrid(raw_b, der_b, meta, base_cfg)
+    base_res = run_hybrid(raw_b, der_b, phys_b, meta, base_cfg)
     base_m   = compute_hybrid_metrics(base_res, nsga_ref)
     save_hybrid_results(base_res, base_m, base_cfg, nsga_ref)
 
     # ── Hybrid (LLM-NSGA-II) ──────────────────────────────────
     hyb_cfg = _make_cfg(run_id, row, rep, "hybrid", use_kt=use_kt)
-    hyb_res = run_hybrid(raw_b, der_b, meta, hyb_cfg)
+    hyb_res = run_hybrid(raw_b, der_b, phys_b, meta, hyb_cfg)
     hyb_m   = compute_hybrid_metrics(hyb_res, nsga_ref)
     save_hybrid_results(hyb_res, hyb_m, hyb_cfg, nsga_ref)
 
@@ -170,6 +170,7 @@ def main():
     print("\n[Setup] Loading data and surrogate ...")
     df           = load_df(DATA_PATH)
     raw_b, der_b = get_bounds(df)
+    phys_b       = get_physics_bounds(df)
     meta         = load_surrogate(MODEL_PKL)
     print(f"  Dataset rows : {len(df)}")
     print(f"  PC  range    : [{raw_b['PC']['min']:.1f}, {raw_b['PC']['max']:.1f}] kg/m3")
@@ -201,7 +202,7 @@ def main():
         print(f"{'─'*70}")
         for rep in range(1, args.repeat + 1):
             print(f"  Repeat {rep}/{args.repeat}")
-            result = run_row(run_id, row, rep, raw_b, der_b, meta, nsga_ref, use_kt=use_kt)
+            result = run_row(run_id, row, rep, raw_b, der_b, phys_b, meta, nsga_ref, use_kt=use_kt)
             all_rows.append(result)
 
     # ── Save combined results ──────────────────────────────────

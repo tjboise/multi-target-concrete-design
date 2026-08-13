@@ -24,7 +24,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from optimizer_core_mt import load_df, get_bounds, load_surrogate
+from optimizer_core_mt import load_df, get_bounds, get_physics_bounds, load_surrogate
 from optimizer_hybrid_mt import (
     HybridConfig, run_hybrid, compute_hybrid_metrics, save_hybrid_results,
 )
@@ -35,7 +35,7 @@ from optimizer_hybrid_mt import (
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 GEMINI_MODEL   = "gemini-2.5-flash-lite"
-DATA_PATH      = r"Super_Cleaned_Concrete_Data - backup.csv"
+DATA_PATH      = r"Concrete_Data_SI.csv"
 MODEL_PKL      = r"..\low_carbon_concrete\concrete_catboost_optimized.pkl"
 NSGA_REF_CSV   = r"results\nsga2_reference.csv"
 
@@ -141,13 +141,13 @@ EXPERIMENTS = {
 # RUNNER
 # ──────────────────────────────────────────────────────────────
 
-def run_one(cfg: HybridConfig, raw_b, der_b, meta, nsga_ref: list) -> dict:
+def run_one(cfg: HybridConfig, raw_b, der_b, phys_b, meta, nsga_ref: list) -> dict:
     print(f"\n{'#'*62}")
     print(f"# {cfg.name}")
     print(f"# {cfg.description}")
     print(f"{'#'*62}")
 
-    result  = run_hybrid(raw_b, der_b, meta, cfg)
+    result  = run_hybrid(raw_b, der_b, phys_b, meta, cfg)
     metrics = compute_hybrid_metrics(result, nsga_ref)
     save_hybrid_results(result, metrics, cfg, nsga_ref)
 
@@ -179,6 +179,7 @@ def main():
     print("\n[Setup] Loading data and surrogate ...")
     df           = load_df(DATA_PATH)
     raw_b, der_b = get_bounds(df)
+    phys_b       = get_physics_bounds(df)
     meta         = load_surrogate(MODEL_PKL)
     print(f"  Dataset rows : {len(df)}")
     print(f"  PC  range    : [{raw_b['PC']['min']:.1f}, {raw_b['PC']['max']:.1f}] kg/m3")
@@ -214,7 +215,7 @@ def main():
                 cfg.output_prefix = os.path.join("results", f"{cfg.name}{pop_suffix}{gen_suffix}_r{rep+1}")
                 print(f"\n  >>> Repeat {rep+1}/{args.repeat}")
 
-            row = run_one(cfg, raw_b, der_b, meta, nsga_ref)
+            row = run_one(cfg, raw_b, der_b, phys_b, meta, nsga_ref)
             row["repeat"] = rep + 1
             all_metrics.append(row)
 

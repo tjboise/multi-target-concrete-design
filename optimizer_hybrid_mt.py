@@ -31,9 +31,9 @@ load_dotenv()
 warnings.filterwarnings("ignore")
 
 from optimizer_core_mt import (
-    RAW_VARS, HV_REF_POINT,
+    RAW_VARS, HV_REF_POINT, PHYSICS_VARS,
     load_df, get_bounds, load_surrogate,
-    compute_gwp, get_derived,
+    compute_gwp, get_derived, get_physics,
 )
 
 
@@ -92,7 +92,7 @@ class HybridConfig:
     use_json_mode: bool = True   # enforce output schema
 
     # Paths
-    data_path: str = r"Super_Cleaned_Concrete_Data - backup.csv"
+    data_path: str = r"Concrete_Data_SI.csv"
     model_pkl: str = r"..\low_carbon_concrete\concrete_catboost_optimized.pkl"
     output_prefix: str = r"results\hybrid_f10_n10"
 
@@ -117,12 +117,12 @@ def _to_array(mix: dict) -> np.ndarray:
 # ──────────────────────────────────────────────────────────────
 
 def evaluate_population(pop: np.ndarray, raw_b: dict, der_b: dict,
-                        meta: dict) -> tuple:
+                        phys_b: dict, meta: dict) -> tuple:
     """
     Evaluate all individuals.
     Returns:
         obj      : (n, 2) array of [GWP, -28d_strength]  (both minimized)
-        feasible : (n,)   bool array — True if derived ratios within bounds
+        feasible : (n,)   bool array — True if all derived + physics constraints satisfied
     """
     n = len(pop)
     obj = np.empty((n, 2))
@@ -132,12 +132,20 @@ def evaluate_population(pop: np.ndarray, raw_b: dict, der_b: dict,
         mix = _to_dict(pop[i])
         obj[i, 0] = compute_gwp(mix)
         obj[i, 1] = -_predict(mix, meta)["28day"]
+
         der = get_derived(mix)
         for k, b in der_b.items():
             v = der.get(k, 0.0)
             if not (b["min"] - 1e-6 <= v <= b["max"] + 1e-6):
                 feasible[i] = False
                 break
+        if feasible[i]:
+            pv = get_physics(mix)
+            for k, b in phys_b.items():
+                v = pv.get(k, 0.0)
+                if not (b["min"] - 1e-6 <= v <= b["max"] + 1e-6):
+                    feasible[i] = False
+                    break
 
     return obj, feasible
 
@@ -572,7 +580,8 @@ def call_llm_for_solutions(elite: list, raw_b: dict, cfg: HybridConfig,
 # MAIN HYBRID LOOP
 # ──────────────────────────────────────────────────────────────
 
-def run_hybrid(raw_b: dict, der_b: dict, meta: dict, cfg: HybridConfig) -> dict:
+def run_hybrid(raw_b: dict, der_b: dict, phys_b: dict,
+               meta: dict, cfg: HybridConfig) -> dict:
     """
     Run LLM-assisted NSGA-II (or pure NSGA-II if llm_frequency == 0).
 
@@ -599,7 +608,7 @@ def run_hybrid(raw_b: dict, der_b: dict, meta: dict, cfg: HybridConfig) -> dict:
         np.random.uniform(raw_b[v]["min"], raw_b[v]["max"], cfg.pop_size)
         for v in RAW_VARS
     ])
-    obj, feas = evaluate_population(pop, raw_b, der_b, meta)
+    obj, feas = evaluate_population(pop, raw_b, der_b, phys_b, meta)
 
     hv_history = []
     llm_calls = 0
@@ -652,7 +661,7 @@ def run_hybrid(raw_b: dict, der_b: dict, meta: dict, cfg: HybridConfig) -> dict:
                 note = f"+LLM×{n_inject}"
 
         # ── Evaluate offspring ─────────────────────────────────
-        off_obj, off_feas = evaluate_population(offspring, raw_b, der_b, meta)
+        off_obj, off_feas = evaluate_population(offspring, raw_b, der_b, phys_b, meta)
 
         # ── Environmental selection (parent + offspring) ───────
         combined = np.vstack([pop, offspring])
@@ -715,10 +724,22 @@ def compute_hybrid_metrics(result: dict, nsga_ref: list) -> dict:
     """
     pareto   = result["final_pareto"]
     nsga_ref = normalize_ref(nsga_ref)
-    if not pareto or not nsga_ref:
-        return {}
+    hv_llm   = _hv(pareto) if pareto else 0.0
 
-    hv_llm  = _hv(pareto)
+    if not pareto or not nsga_ref:
+        return {
+            "HV_hybrid":  round(hv_llm, 4),
+            "HV_nsga":    0.0,
+            "HV_ratio":   0.0,
+            "GD":         0.0,
+            "IGD":        0.0,
+            "spread":     0.0,
+            "n_pareto":   len(pareto),
+            "n_nsga":     len(nsga_ref),
+            "llm_calls":  result["llm_calls"],
+            "parse_fails": result["parse_fails"],
+        }
+
     hv_nsga = _hv(nsga_ref)
 
     def pts(front):
