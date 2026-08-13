@@ -32,19 +32,24 @@ warnings.filterwarnings("ignore")
 
 from optimizer_core_mt import (
     RAW_VARS, HV_REF_POINT, PHYSICS_VARS,
+    HV_GWP_MIN, HV_GWP_MAX, HV_STR_MIN, HV_STR_MAX,
     load_df, get_bounds, load_surrogate,
     compute_gwp, get_derived, get_physics,
 )
 
 
 def _hv(pareto: list) -> float:
-    """Compute hypervolume from list of dicts with 'GWP' and '28day' keys."""
+    """Compute normalized hypervolume from list of dicts with 'GWP' and '28day' keys."""
     if not pareto:
         return 0.0
     try:
         from pymoo.indicators.hv import HV
-        F = np.array([[s["GWP"], -s["28day"]] for s in pareto])
-        return round(float(HV(ref_point=HV_REF_POINT)(F)), 4)
+        gwp = np.array([s["GWP"]   for s in pareto])
+        d28 = np.array([s["28day"] for s in pareto])
+        gwp_n = (gwp - HV_GWP_MIN) / (HV_GWP_MAX - HV_GWP_MIN)
+        str_n = (HV_STR_MAX - d28) / (HV_STR_MAX - HV_STR_MIN)
+        F = np.column_stack([gwp_n, str_n])
+        return round(float(HV(ref_point=HV_REF_POINT)(F)), 6)
     except Exception as exc:
         print(f"  [Warning] HV failed: {exc}")
         return 0.0

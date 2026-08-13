@@ -81,7 +81,7 @@ def run_cell(F: int, N: int, rep: int,
     hv_adv = hyb_m["HV_hybrid"] - base_m["HV_hybrid"]
     print(
         f"    [F={F:2d} N={N:2d} rep={rep}] "
-        f"Base={base_m['HV_hybrid']:.1f}  Hyb={hyb_m['HV_hybrid']:.1f}  Δ={hv_adv:+.1f}"
+        f"Base={base_m['HV_hybrid']:.4f}  Hyb={hyb_m['HV_hybrid']:.4f}  d={hv_adv:+.4f}"
     )
     return {
         "F": F, "N": N, "rep": rep,
@@ -171,7 +171,7 @@ def main():
     stamp    = datetime.now().strftime("%Y%m%d_%H%M")
     csv_path = os.path.join("results", f"grid_fn_nokt_{stamp}.csv")
     df_out.to_csv(csv_path, index=False)
-    print(f"\n  Combined results → {csv_path}")
+    print(f"\n  Combined results -> {csv_path}")
 
     print_summary(df_out)
 

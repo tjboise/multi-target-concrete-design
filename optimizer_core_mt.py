@@ -55,11 +55,13 @@ DENSITIES = {
 # Physics-based derived quantities used as additional constraints
 PHYSICS_VARS = ["solid_vol", "Vagg", "TOTAL_BINDER", "ACC_pct"]
 
-# HV reference point in [GWP, -28d_strength] minimization space.
-# Must be WORSE (larger) than any feasible solution in both dimensions.
-#   GWP ref = 500  → all solutions have GWP < 500
-#   -28d ref = -10 → all solutions have -28d < -10 (i.e. strength > 10 MPa)
-HV_REF_POINT = np.array([500.0, -10.0])
+# Normalization bounds from Concrete_Data_SI.csv (fixed, dataset-derived).
+# HV is computed in normalized [0,1]² space; reference point = [1, 1] (worst corner).
+#   GWP_norm  = (GWP - 169.0) / (534.5 - 169.0)
+#   str_norm  = (106.1 - strength) / (106.1 - 17.4)   ← 0=best (high strength), 1=worst
+HV_GWP_MIN, HV_GWP_MAX     = 169.0, 534.5
+HV_STR_MIN, HV_STR_MAX     = 17.4,  106.1
+HV_REF_POINT = np.array([1.0, 1.0])
 
 
 # ─────────────────────────────────────────────────────────────
@@ -273,8 +275,12 @@ def compute_hypervolume(pareto_front: list) -> float:
         return 0.0
     try:
         from pymoo.indicators.hv import HV
-        F = np.array([[s["gwp"], -s["pred_28day"]] for s in pareto_front])
-        return round(float(HV(ref_point=HV_REF_POINT)(F)), 4)
+        gwp = np.array([s["gwp"]        for s in pareto_front])
+        d28 = np.array([s["pred_28day"] for s in pareto_front])
+        gwp_n = (gwp - HV_GWP_MIN) / (HV_GWP_MAX - HV_GWP_MIN)
+        str_n = (HV_STR_MAX - d28) / (HV_STR_MAX - HV_STR_MIN)
+        F = np.column_stack([gwp_n, str_n])
+        return round(float(HV(ref_point=HV_REF_POINT)(F)), 6)
     except Exception as exc:
         print(f"  [Warning] HV failed: {exc}")
         return 0.0

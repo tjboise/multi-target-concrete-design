@@ -1,2 +1,2 @@
-HV_hybrid,HV_nsga,HV_ratio,GD,IGD,spread,n_pareto,n_nsga,llm_calls,parse_fails
-19582.8057,0.0,0.0,0.0,0.0,0.0,50,0,5,0
+HV_hybrid,HV_nsga,HV_ratio,GD,IGD,spread,n_pareto,n_nsga,llm_calls,parse_fails,HV
+0.9251,0.0,0.0,0.0,0.0,0.0,50,0,5,0,0.890409
