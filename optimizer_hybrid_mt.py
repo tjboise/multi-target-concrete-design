@@ -96,6 +96,12 @@ class HybridConfig:
     temperature: float = 0.7     # lower than standalone LLM for mix precision
     use_json_mode: bool = True   # enforce output schema
 
+    # Reproducibility
+    # Same seed for baseline and hybrid of the same rep → identical initial population,
+    # so any HV difference is due to LLM injection only, not initialization luck.
+    # None means do not seed (legacy behaviour).
+    seed: int = None
+
     # Paths
     data_path: str = r"Concrete_Data_SI.csv"
     model_pkl: str = r"..\low_carbon_concrete\concrete_catboost_optimized.pkl"
@@ -596,6 +602,9 @@ def run_hybrid(raw_b: dict, der_b: dict, phys_b: dict,
         llm_calls    : int
         parse_fails  : int
     """
+    if cfg.seed is not None:
+        np.random.seed(cfg.seed)
+
     use_llm = cfg.llm_frequency > 0 and cfg.gemini_api_key
 
     if use_llm:

@@ -46,6 +46,10 @@ DEFAULT_REPEAT = 5
 def _make_cfg(F: int, N: int, rep: int, mode: str) -> HybridConfig:
     tag  = f"f{F:02d}_n{N:02d}_rep{rep:02d}"
     name = f"grid_{'base' if mode == 'baseline' else 'hyb'}_{tag}"
+    # Seed is shared between baseline and hybrid of the same rep so both start
+    # from the identical initial population.  Any HV difference then reflects
+    # the LLM injection alone, not initialization luck.
+    seed = rep * 1000
     return HybridConfig(
         name=name,
         description=f"Grid ({mode}): pop={POP}, gen={GEN}, F={F}, N={N}, rep={rep}",
@@ -61,6 +65,7 @@ def _make_cfg(F: int, N: int, rep: int, mode: str) -> HybridConfig:
         output_prefix=os.path.join("results", name),
         use_knowledge_table=False,
         use_json_mode=True,
+        seed=seed,
     )
 
 
