@@ -298,7 +298,10 @@ After adding all three constraint layers (raw ingredient bounds, derived ratios,
 
 ![Pareto front: hybrid F=10,N=5 vs baseline, physics-constrained](results/figures/pareto_constrained_f10n5.png)
 
-All 5 runs pooled (250 points per method). The hybrid pushes the high-strength end of the Pareto front further: max 28-day strength reaches **69.9 MPa** vs **67.2 MPa** for the baseline (+4.0%). The GWP range covered is similar across both methods (both bounded by the physics constraints).
+All 5 runs pooled; curves are PCHIP-smoothed non-dominated fronts. Two effects are visible:
+
+1. **Higher maximum strength.** The hybrid reaches a 28-day strength of **69.9 MPa** vs **67.2 MPa** for the baseline (+4.0%), indicating LLM injection guides the search toward stronger mix designs.
+2. **Wider exploration range.** The hybrid Pareto front extends to GWP **263.8 kg CO₂-eq/m³**, compared to **234.5** for the baseline (+12.5%). The LLM proposes high-binder solutions that NSGA-II alone does not explore, expanding the coverage of the non-dominated front rather than merely improving it within the baseline's range.
 
 #### Convergence curves (F=10, N=5)
 
