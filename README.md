@@ -12,6 +12,7 @@ Extends LLM-based concrete mix design from single-objective optimization to **tr
    - [Surrogate Model](#surrogate-model)
 2. [LLM-NSGA-II Hybrid Optimizer](#llm-nsga-ii-hybrid-optimizer)
    - [Architecture](#architecture)
+   - [Prompt Design](#prompt-design)
    - [Hyperparameter Grid Search](#hyperparameter-grid-search)
    - [Results — Physics Constrained](#results--physics-constrained)
    - [Statistical Significance](#statistical-significance)
@@ -128,6 +129,189 @@ NSGA-II generation loop
 ```
 
 Injection timing: the first LLM call occurs at generation F (not at gen 0). With F=10, injections occur at gen 10, 20, 30, …, 100 (10 calls total per run). The HV recorded at each of those generations already includes the injected solutions.
+
+---
+
+### Prompt Design
+
+Each LLM call sends a structured prompt with five sections:
+
+| Section | Content |
+|---------|---------|
+| **Objectives** | Minimize GWP, maximize 28-day strength; why they conflict |
+| **Material Reference** | GWP factors per ingredient, strength mechanisms, two-path optimization strategy — optional, controlled by `use_knowledge_table` |
+| **Constraints** | All three constraint layers: raw bounds (Layer 1), 12 derived ratio constraints with formulas and bounds (Layer 2), volume physics Vfinal/Vagg/TOTAL_BINDER (Layer 3) |
+| **Pareto Elite** | Up to 10 current best non-dominated solutions from NSGA-II, sorted by GWP, with w/b, binder, b/agg, and binder composition (PC%/FA%/SC%) computed inline |
+| **Task** | Ask the LLM to generate N mixes it believes can push the Pareto front, with free reasoning about composition — no prescribed mix types or distribution |
+
+<details>
+<summary>Full example prompt (use_knowledge_table=True, N=10, 4 elite solutions)</summary>
+
+```
+You are an expert concrete mix designer assisting a multi-objective genetic algorithm.
+
+## Optimization Objectives
+Simultaneously optimize two competing objectives:
+  1. MINIMIZE GWP (kg CO2-eq/m3) — greenhouse gas emission footprint
+  2. MAXIMIZE 28-day compressive strength (MPa) — structural performance
+
+These objectives conflict: cementitious binder drives both strength and GWP.
+A Pareto-optimal mix cannot improve one objective without worsening the other.
+
+## Material Reference: GWP Emission Factors and Strength Effects
+
+### Cementitious Materials (binders) — dominate both GWP and strength
+| Material | GWP (kg CO2/kg) | Strength Effect | Optimization Strategy |
+|----------|----------------|-----------------|----------------------|
+| PC  (Portland Cement)  | 1.048 | Primary strength driver at all ages | Minimize; each 100 kg/m3 reduction saves ~105 kg CO2/m3 GWP |
+| FA  (Fly Ash)          | 0.328 | Slow pozzolanic reaction; moderate 28d gain | Substitute for PC on low-GWP path; SC preferred for 28d strength |
+| SC  (Slag Cement/GGBS) | 0.264 | Latent hydraulic; strong 28d contribution | Best PC substitute: lower GWP than FA, better 28d strength |
+
+### Aggregates — negligible GWP, structural role
+| Material | GWP (kg CO2/kg) | Role |
+|----------|----------------|------|
+| FAGG (Fine Aggregate / Sand) | 0.0026 | Fills voids; higher content dilutes binder → lower GWP |
+| CAGG (Coarse Aggregate)      | 0.0037 | Load-bearing skeleton; higher content with WR_HR maintains strength at lower binder |
+
+### Water and Admixtures
+| Material | GWP | Role and Mechanism |
+|----------|-----|--------------------|
+| WATER    | 0.000 | w/b ratio governs strength; reducing WATER with WR_HR lowers w/b without losing workability |
+| WR_HR (Superplasticizer) | 0.000 | Enables w/b < 0.38 at constant workability; most powerful strength lever per unit |
+| WR    (Water Reducer)    | 0.000 | Moderate water reduction; use when WR_HR budget is exhausted |
+| ACC   (Accelerator)      | 0.000 | Boosts early-age hydration; modest 28d effect |
+| AEA   (Air-Entraining Agent) | 0.000 | Freeze-thaw resistance; slightly reduces strength |
+
+## Key Formulas and Derived Ratios
+
+  GWP ≈ 1.048·PC + 0.328·FA + 0.264·SC + 0.0026·FAGG + 0.0037·CAGG  (kg CO2-eq/m3)
+
+  Binder composition:
+    Binder  = PC + FA + SC                           (total cementitious content, kg/m3)
+    w/b     = WATER / Binder                         (water-to-binder ratio; governs strength via Abrams' law)
+    PC%     = PC / Binder                            (Portland cement fraction; high PC% → high GWP)
+    FA%     = FA / Binder                            (fly ash fraction)
+    SC%     = SC / Binder                            (slag cement fraction; preferred substitute for PC)
+
+  Mix density ratios:
+    b/agg   = Binder / (FAGG + CAGG)                (binder-to-aggregate ratio; lower → lower GWP risk: lower strength)
+
+  GWP sensitivity (approximate, per 10% binder fraction shift):
+    Shifting 10% of Binder from PC → SC saves ≈ (1.048-0.264)·0.10·Binder kg CO2/m3
+    Shifting 10% of Binder from PC → FA saves ≈ (1.048-0.328)·0.10·Binder kg CO2/m3
+
+## Two-Path Optimization Strategy
+
+  PATH 1 — Binder Substitution (maintain binder volume, change composition):
+    Replace PC with SC (preferred) or FA to lower GWP while keeping total binder roughly constant.
+    If strength drops, reduce WATER or increase WR_HR to recover w/b.
+    Best for: improving GWP without sacrificing strength; easier to control.
+
+  PATH 2 — Binder Volume Reduction (reduce b/agg ratio):
+    Reduce total binder content; compensate with higher FAGG+CAGG, higher WR_HR dosage.
+    This pushes the low-GWP frontier further than Path 1 alone.
+    Risk: strength may drop — counter with aggressive WR_HR and lower WATER simultaneously.
+    Best for: mixes where binder fraction is still high (b/agg > 0.3).
+
+  COMBINED: SC-dominant binder (SC% 40-70%) + low PC% + WR_HR to reduce w/b below 0.42.
+            Prevents premature convergence to pure Path 1 (high-SC but still high-binder) solutions.
+
+## Constraints
+
+### Layer 1 — Raw Ingredient Bounds (kg/m3)
+All 10 ingredient values must stay within these dataset-derived bounds:
+
+  PC     : [97.3, 504.3]
+  FA     : [0.0, 162.0]
+  SC     : [0.0, 332.2]
+  FAGG   : [473.5, 1067.9]
+  CAGG   : [400.5, 1364.6]
+  WATER  : [90.8, 214.8]
+  AEA    : [0.0, 1.5]
+  WR_HR  : [0.0, 4.7]
+  WR     : [0.0, 7.8]
+  ACC    : [0.0, 28.5]
+
+### Layer 2 — Derived Ratio Constraints
+  Binder = PC + FA + SC   (total cementitious content, kg/m3)
+  Agg    = FAGG + CAGG    (total aggregate, kg/m3)
+
+  Ratio        Formula                        Min       Max
+  ------------ ------------------------- --------  --------
+  w/b          WATER / Binder               0.235     0.714
+  b/a          Binder / Agg                 0.105     0.488
+  SCM%         (FA+SC) / Binder             0.000     0.765
+  CAGG%        CAGG / Agg                   0.315     0.721
+  FAGG%        FAGG / Agg                   0.279     0.685
+  PC%          PC / Binder                  0.235     1.000
+  FA%          FA / Binder                  0.000     0.375
+  SC%          SC / Binder                  0.000     0.717
+  AEA_pct      AEA / Binder                 0.000     0.003
+  WR_HR_pct    WR_HR / Binder               0.000     0.012
+  WR_pct       WR / Binder                  0.000     0.020
+  ACC_pct      ACC / Binder                 0.000     0.061
+
+### Layer 3 — Physics Constraints (Pfeiffer et al. 2024, Eq. 19-20)
+  Material densities (kg/m3):
+    PC=3150  FA=2200  SC=2900  FAGG=2650  CAGG=2650
+    WATER=1000  AEA=1010  WR_HR=1080  WR=1140  ACC=1340
+
+  Vm = PC/3150 + FA/2200 + SC/2900 + FAGG/2650 + CAGG/2650
+     + WATER/1000 + AEA/1010 + WR_HR/1080 + WR/1140 + ACC/1340
+
+  Vfinal = Vm + 0.07   if AEA/PC >= 0.000244  (7% entrained air — AEA present)
+         = Vm + 0.03   if AEA/PC <  0.000244  (3% entrapped air — no AEA)
+  Constraint: 0.950 <= Vfinal <= 1.050
+
+  Vagg = FAGG/2650 + CAGG/2650
+  Constraint: 0.413 <= Vagg <= 0.778
+
+  TOTAL_BINDER = PC + FA + SC
+  Constraint: 207.7 <= TOTAL_BINDER <= 590.3 kg/m3
+
+## Current Pareto-Elite Solutions (sorted by GWP, low → high)
+These are the best non-dominated feasible mixes found by NSGA-II so far.
+
+  [1] GWP=195.2 | 28d=55.8 MPa | w/b=0.392 | binder=370 kg/m3 | b/agg=0.220
+       PC%=38%  FA%=22%  SC%=41%
+       PC=140.0  FA=80.0  SC=150.0  FAGG=810.0  CAGG=870.0  WATER=145.0  AEA=0.0  WR_HR=1.8  WR=0.0  ACC=0.0
+  [2] GWP=248.6 | 28d=67.1 MPa | w/b=0.403 | binder=370 kg/m3 | b/agg=0.218
+       PC%=54%  FA%=15%  SC%=31%
+       PC=200.0  FA=55.0  SC=115.0  FAGG=800.0  CAGG=895.0  WATER=149.0  AEA=0.0  WR_HR=2.3  WR=0.0  ACC=0.0
+  [3] GWP=318.4 | 28d=81.3 MPa | w/b=0.346 | binder=390 kg/m3 | b/agg=0.227
+       PC%=69%  FA%=12%  SC%=19%
+       PC=270.0  FA=45.0  SC=75.0  FAGG=775.0  CAGG=940.0  WATER=135.0  AEA=0.5  WR_HR=3.5  WR=0.0  ACC=0.0
+  [4] GWP=403.7 | 28d=93.5 MPa | w/b=0.293 | binder=430 kg/m3 | b/agg=0.260
+       PC%=81%  FA%=6%  SC%=13%
+       PC=350.0  FA=25.0  SC=55.0  FAGG=740.0  CAGG=915.0  WATER=126.0  AEA=0.9  WR_HR=4.3  WR=0.0  ACC=0.0
+
+## Task: Generate 10 New Candidate Mixes
+
+You are augmenting NSGA-II's offspring pool. The mixes you generate will be
+injected into the next generation's environmental selection alongside the genetic
+algorithm's own offspring. Mixes that are Pareto-dominated will be selected against;
+those that push or extend the current Pareto front will survive and propagate into
+future generations.
+
+Generate 10 mixes that you believe have the best chance of being
+non-dominated relative to the current Pareto front shown above.
+
+Study the elite solutions carefully: identify their compositional patterns, note where
+the GWP-strength trade-off is densely covered and where it is sparse, and reason about
+what changes to ingredient proportions could push the front outward in any direction.
+Draw on your material science knowledge and the formulas above to verify that your
+proposals are physically reasonable and satisfy all three constraint layers.
+
+Every proposed mix must satisfy ALL constraints listed above. Verify each mix
+before including it in your response.
+
+Return exactly 10 mixes as a JSON array:
+  [{"mix": {"PC": ..., "FA": ..., "SC": ..., "FAGG": ..., "CAGG": ...,
+            "WATER": ..., "AEA": ..., "WR_HR": ..., "WR": ..., "ACC": ...}}, ...]
+All values in kg/m3.
+```
+
+</details>
 
 ---
 
