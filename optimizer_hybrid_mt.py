@@ -393,111 +393,151 @@ _KNOWLEDGE_TABLE = """\
 """
 
 
-def build_hybrid_prompt(elite: list, raw_b: dict, cfg: HybridConfig) -> str:
+_DERIVED_FORMULAS = [
+    ("w/b",       "WATER / Binder"),
+    ("b/a",       "Binder / Agg"),
+    ("SCM%",      "(FA+SC) / Binder"),
+    ("CAGG%",     "CAGG / Agg"),
+    ("FAGG%",     "FAGG / Agg"),
+    ("PC%",       "PC / Binder"),
+    ("FA%",       "FA / Binder"),
+    ("SC%",       "SC / Binder"),
+    ("AEA_pct",   "AEA / Binder"),
+    ("WR_HR_pct", "WR_HR / Binder"),
+    ("WR_pct",    "WR / Binder"),
+    ("ACC_pct",   "ACC / Binder"),
+]
+
+
+def build_hybrid_prompt(elite: list, raw_b: dict, der_b: dict,
+                        phys_b: dict, cfg: HybridConfig) -> str:
     """Build the LLM prompt for one intervention step."""
     lines = [
-        "You are an expert concrete mix designer performing multi-objective optimization.",
+        "You are an expert concrete mix designer assisting a multi-objective genetic algorithm.",
         "",
-        "## Optimization Problem",
+        "## Optimization Objectives",
         "Simultaneously optimize two competing objectives:",
-        "  1. MINIMIZE GWP (kg CO2-eq/m3) — lower carbon footprint",
-        "  2. MAXIMIZE 28-day compressive strength (MPa) — higher structural performance",
+        "  1. MINIMIZE GWP (kg CO2-eq/m3) — greenhouse gas emission footprint",
+        "  2. MAXIMIZE 28-day compressive strength (MPa) — structural performance",
         "",
-        "These conflict because binder content drives both strength AND GWP.",
+        "These objectives conflict: cementitious binder drives both strength and GWP.",
         "A Pareto-optimal mix cannot improve one objective without worsening the other.",
-        "Your role is to propose mixes that push the Pareto front outward.",
         "",
     ]
 
     if cfg.use_knowledge_table:
         lines.append(_KNOWLEDGE_TABLE)
 
+    # ── Layer 1 ──────────────────────────────────────────────
     lines += [
-        "## Variable Bounds (kg/m3) — all values must strictly stay within these ranges:",
+        "## Constraints",
+        "",
+        "### Layer 1 — Raw Ingredient Bounds (kg/m3)",
+        "All 10 ingredient values must stay within these dataset-derived bounds:",
+        "",
     ]
+    col = max(len(v) for v in RAW_VARS) + 2
     for v in RAW_VARS:
         b = raw_b[v]
-        lines.append(f"  {v}: [{b['min']:.1f}, {b['max']:.1f}]")
+        lines.append(f"  {v:<{col}}: [{b['min']:.1f}, {b['max']:.1f}]")
 
+    # ── Layer 2 ──────────────────────────────────────────────
+    lines += [
+        "",
+        "### Layer 2 — Derived Ratio Constraints",
+        "  Binder = PC + FA + SC   (total cementitious content, kg/m3)",
+        "  Agg    = FAGG + CAGG    (total aggregate, kg/m3)",
+        "",
+        f"  {'Ratio':<12} {'Formula':<25} {'Min':>8}  {'Max':>8}",
+        f"  {'-'*12} {'-'*25} {'-'*8}  {'-'*8}",
+    ]
+    for var, formula in _DERIVED_FORMULAS:
+        if var in der_b:
+            b = der_b[var]
+            lines.append(f"  {var:<12} {formula:<25} {b['min']:>8.3f}  {b['max']:>8.3f}")
+
+    # ── Layer 3 ──────────────────────────────────────────────
+    lines += [
+        "",
+        "### Layer 3 — Physics Constraints (Pfeiffer et al. 2024, Eq. 19–20)",
+        "  Material densities (kg/m3):",
+        "    PC=3150  FA=2200  SC=2900  FAGG=2650  CAGG=2650",
+        "    WATER=1000  AEA=1010  WR_HR=1080  WR=1140  ACC=1340",
+        "",
+        "  Vm = PC/3150 + FA/2200 + SC/2900 + FAGG/2650 + CAGG/2650",
+        "     + WATER/1000 + AEA/1010 + WR_HR/1080 + WR/1140 + ACC/1340",
+        "",
+        "  Vfinal = Vm + 0.07   if AEA/PC >= 0.000244  (7% entrained air — AEA present)",
+        "         = Vm + 0.03   if AEA/PC <  0.000244  (3% entrapped air — no AEA)",
+        "  Constraint: 0.950 <= Vfinal <= 1.050",
+    ]
+    if "Vagg" in phys_b:
+        b = phys_b["Vagg"]
+        lines += [
+            "",
+            "  Vagg = FAGG/2650 + CAGG/2650",
+            f"  Constraint: {b['min']:.3f} <= Vagg <= {b['max']:.3f}",
+        ]
+    if "TOTAL_BINDER" in phys_b:
+        b = phys_b["TOTAL_BINDER"]
+        lines += [
+            "",
+            "  TOTAL_BINDER = PC + FA + SC",
+            f"  Constraint: {b['min']:.1f} <= TOTAL_BINDER <= {b['max']:.1f} kg/m3",
+        ]
+
+    # ── Elite ────────────────────────────────────────────────
     lines += [
         "",
         "## Current Pareto-Elite Solutions (sorted by GWP, low → high)",
-        "These are the best trade-offs the genetic algorithm has found so far.",
-        "For each solution, w/b and total binder are computed for your analysis.",
+        "These are the best non-dominated feasible mixes found by NSGA-II so far.",
         "",
     ]
     for i, e in enumerate(elite):
         mix = e["mix"]
-        pc  = mix.get("PC", 0)
-        fa  = mix.get("FA", 0)
-        sc  = mix.get("SC", 0)
-        total_binder = pc + fa + sc
-        wb   = mix.get("WATER", 0) / total_binder if total_binder > 0 else 0
+        pc  = mix.get("PC", 0); fa = mix.get("FA", 0); sc = mix.get("SC", 0)
+        tb  = pc + fa + sc
+        wb   = mix.get("WATER", 0) / tb if tb > 0 else 0
         agg  = mix.get("FAGG", 0) + mix.get("CAGG", 0)
-        bagg = total_binder / agg if agg > 0 else 0
-        pc_pct = 100 * pc / total_binder if total_binder > 0 else 0
-        fa_pct = 100 * fa / total_binder if total_binder > 0 else 0
-        sc_pct = 100 * sc / total_binder if total_binder > 0 else 0
-        mix_str = "  ".join(f"{k}={v:.1f}" for k, v in mix.items())
+        bagg = tb / agg if agg > 0 else 0
         lines.append(
             f"  [{i+1}] GWP={e['GWP']:.1f} | 28d={e['28d_MPa']:.1f} MPa"
-            f" | w/b={wb:.3f} | binder={total_binder:.0f} kg/m3"
-            f" | b/agg={bagg:.3f}"
+            f" | w/b={wb:.3f} | binder={tb:.0f} kg/m3 | b/agg={bagg:.3f}"
         )
         lines.append(
-            f"       PC%={pc_pct:.0f}%  FA%={fa_pct:.0f}%  SC%={sc_pct:.0f}%"
+            f"       PC%={100*pc/tb if tb>0 else 0:.0f}%"
+            f"  FA%={100*fa/tb if tb>0 else 0:.0f}%"
+            f"  SC%={100*sc/tb if tb>0 else 0:.0f}%"
         )
-        lines.append(f"       {mix_str}")
+        lines.append("       " + "  ".join(f"{k}={v:.1f}" for k, v in mix.items()))
     lines.append("")
 
-    n4 = max(1, cfg.llm_n_solutions // 4)
-    lines += [f"## Task: Generate {cfg.llm_n_solutions} New Candidate Mixes", ""]
-
-    if cfg.use_knowledge_table:
-        lines += [
-            "Reason step by step before writing each mix:",
-            "  Step 1 — Study the elite list above. For each solution compute mentally:",
-            "           PC%, FA%, SC%, w/b, b/agg. Identify the lowest GWP, highest strength,",
-            "           and any GWP ranges where the Pareto front has gaps.",
-            "  Step 2 — Decide which path applies to each proposed mix:",
-            "           Path 1 (binder substitution) or Path 2 (binder volume reduction).",
-            "           Avoid over-using Path 1 alone — it gets trapped at high binder volumes.",
-            "  Step 3 — State the target GWP and target strength for each mix, then choose",
-            "           PC%, FA%, SC%, w/b, b/agg to hit those targets. Derive ingredient",
-            "           quantities from the ratios, then verify all bounds are satisfied.",
-            "",
-            "Distribute your proposals across these four situations:",
-            f"  • ~{n4} mixes  GAP-FILL : target GWP ranges not covered by current elite;",
-            "                  interpolate binder ratios (PC%:FA%:SC%) and w/b to fill the gap.",
-            f"  • ~{n4} mixes  LOW-GWP  : Path 2 — reduce total binder (b/agg ↓), raise FAGG+CAGG,",
-            "                  maximize WR_HR, SC%-dominant, keep w/b ≤ 0.50.",
-            f"  • ~{n4} mixes  HIGH-STR : Path 1+2 — raise binder, target w/b < 0.40 via WR_HR↑+WATER↓,",
-            "                  higher PC% acceptable, aim for high-strength end of Pareto front.",
-            f"  • ~{n4} mixes  BALANCED : SC% 50-65%, w/b 0.40-0.48, moderate WR_HR, moderate binder.",
-        ]
-    else:
-        lines += [
-            "Study the elite list above and identify:",
-            "  - GWP ranges with no coverage (gaps in the Pareto front)",
-            "  - The lowest-GWP solution and highest-strength solution",
-            "  - How PC, FA, SC, WATER, WR_HR levels relate to GWP and strength",
-            "",
-            "Distribute your proposals across these four situations:",
-            f"  • ~{n4} mixes  GAP-FILL : target GWP ranges not covered by the current elite.",
-            f"  • ~{n4} mixes  LOW-GWP  : minimize GWP — reduce PC, increase FA/SC, reduce binder,",
-            "                  raise FAGG+CAGG, use WR_HR to maintain workability.",
-            f"  • ~{n4} mixes  HIGH-STR : maximize strength — increase binder, reduce WATER,",
-            "                  increase WR_HR, aim for high-strength end of Pareto front.",
-            f"  • ~{n4} mixes  BALANCED : moderate GWP and strength, distinct from current elite.",
-        ]
-
+    # ── Task ─────────────────────────────────────────────────
     lines += [
+        f"## Task: Generate {cfg.llm_n_solutions} New Candidate Mixes",
         "",
-        f"Return exactly {cfg.llm_n_solutions} mixes as a JSON array.",
-        'Each element: {"mix": {"PC": ..., "FA": ..., "SC": ..., '
-        '"FAGG": ..., "CAGG": ..., "WATER": ..., "AEA": ..., '
-        '"WR_HR": ..., "WR": ..., "ACC": ...}}',
-        "All values must be within the bounds listed above.",
+        "You are augmenting NSGA-II's offspring pool. The mixes you generate will be",
+        "injected into the next generation's environmental selection alongside the genetic",
+        "algorithm's own offspring. Mixes that are Pareto-dominated will be selected against;",
+        "those that push or extend the current Pareto front will survive and propagate into",
+        "future generations.",
+        "",
+        f"Generate {cfg.llm_n_solutions} mixes that you believe have the best chance of being",
+        "non-dominated relative to the current Pareto front shown above.",
+        "",
+        "Study the elite solutions carefully: identify their compositional patterns, note where",
+        "the GWP–strength trade-off is densely covered and where it is sparse, and reason about",
+        "what changes to ingredient proportions could push the front outward in any direction.",
+        "Draw on your material science knowledge and the formulas above to verify that your",
+        "proposals are physically reasonable and satisfy all three constraint layers.",
+        "",
+        "Every proposed mix must satisfy ALL constraints listed above. Verify each mix",
+        "before including it in your response.",
+        "",
+        f"Return exactly {cfg.llm_n_solutions} mixes as a JSON array:",
+        '  [{"mix": {"PC": ..., "FA": ..., "SC": ..., "FAGG": ..., "CAGG": ...,',
+        '            "WATER": ..., "AEA": ..., "WR_HR": ..., "WR": ..., "ACC": ...}}, ...]',
+        "All values in kg/m3.",
     ]
 
     return "\n".join(lines)
@@ -525,13 +565,13 @@ def _parse_llm_array(text: str):
     return None
 
 
-def call_llm_for_solutions(elite: list, raw_b: dict, cfg: HybridConfig,
-                            client, genai_types) -> tuple:
+def call_llm_for_solutions(elite: list, raw_b: dict, der_b: dict, phys_b: dict,
+                            cfg: HybridConfig, client, genai_types) -> tuple:
     """
     Single LLM call to generate N candidate solutions.
     Returns (list of np.ndarray, n_parse_fails).
     """
-    prompt = build_hybrid_prompt(elite, raw_b, cfg)
+    prompt = build_hybrid_prompt(elite, raw_b, der_b, phys_b, cfg)
     lb = np.array([raw_b[v]["min"] for v in RAW_VARS])
     ub = np.array([raw_b[v]["max"] for v in RAW_VARS])
 
@@ -663,7 +703,7 @@ def run_hybrid(raw_b: dict, der_b: dict, phys_b: dict,
                     })
 
                 new_sols, n_fails = call_llm_for_solutions(
-                    elite, raw_b, cfg, client, genai_types
+                    elite, raw_b, der_b, phys_b, cfg, client, genai_types
                 )
                 llm_calls += 1
                 parse_fails += n_fails
