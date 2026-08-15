@@ -88,11 +88,14 @@ class HybridConfig:
     llm_n_elite: int = 10        # elite solutions shown to LLM as few-shot context
 
     # Constraint handling strategy
-    # "feasibility_first" : infeasible solutions stay in population but are dominated
-    #                        by any feasible solution (Deb 2002 NSGA-II standard)
     # "death_penalty"     : infeasible solutions receive obj = [inf, inf] and are
-    #                        driven out within 1-2 generations
-    constraint_mode: str = "feasibility_first"
+    #                        eliminated in the same generation's environmental selection.
+    #                        Consistent with LLM solution pre-filtering (infeasible LLM
+    #                        solutions are discarded before injection).
+    # "feasibility_first" : infeasible solutions stay with true objective values but are
+    #                        dominated by any feasible solution (Deb 2002 NSGA-II standard);
+    #                        they are gradually pushed out over several generations.
+    constraint_mode: str = "death_penalty"
 
     # Prompt components
     use_knowledge_table: bool = True  # material GWP factors + strength effects
