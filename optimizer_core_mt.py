@@ -44,7 +44,8 @@ GWP_FACTORS = {
 }
 
 RAW_VARS     = ["PC", "FA", "SC", "FAGG", "CAGG", "WATER", "AEA", "WR_HR", "WR", "ACC"]
-DERIVED_VARS = ["w/b", "b/a", "SCM%", "CAGG%", "FAGG%", "PC%", "FA%", "SC%"]
+DERIVED_VARS = ["w/b", "b/a", "SCM%", "CAGG%", "FAGG%", "PC%", "FA%", "SC%",
+                "AEA_pct", "WR_HR_pct", "WR_pct", "ACC_pct"]
 
 # Material densities (kg/m³) from Pfeiffer et al. 2024, Table 4
 DENSITIES = {
@@ -53,7 +54,7 @@ DENSITIES = {
     "AEA": 1010, "WR_HR": 1080, "WR": 1140, "ACC": 1340,
 }
 # Physics-based derived quantities used as additional constraints
-PHYSICS_VARS = ["solid_vol", "Vagg", "TOTAL_BINDER", "ACC_pct"]
+PHYSICS_VARS = ["Vfinal", "Vagg", "TOTAL_BINDER"]
 
 # Normalization bounds from Concrete_Data_SI.csv (fixed, dataset-derived).
 # HV is computed in normalized [0,1]² space; reference point = [1, 1] (worst corner).
@@ -117,14 +118,18 @@ def _add_derived(df: pd.DataFrame) -> pd.DataFrame:
     tb  = df["PC"] + df["FA"] + df["SC"]
     agg = df["FAGG"] + df["CAGG"]
     df["TOTAL_BINDER"] = tb
-    df["w/b"]   = df["WATER"] / tb
-    df["b/a"]   = tb / agg
-    df["SCM%"]  = (df["FA"] + df["SC"]) / tb
-    df["CAGG%"] = df["CAGG"] / agg
-    df["FAGG%"] = df["FAGG"] / agg
-    df["PC%"]   = df["PC"]   / tb
-    df["FA%"]   = df["FA"]   / tb
-    df["SC%"]   = df["SC"]   / tb
+    df["w/b"]       = df["WATER"] / tb
+    df["b/a"]       = tb / agg
+    df["SCM%"]      = (df["FA"] + df["SC"]) / tb
+    df["CAGG%"]     = df["CAGG"] / agg
+    df["FAGG%"]     = df["FAGG"] / agg
+    df["PC%"]       = df["PC"]   / tb
+    df["FA%"]       = df["FA"]   / tb
+    df["SC%"]       = df["SC"]   / tb
+    df["AEA_pct"]   = df["AEA"]   / (tb + 1e-9)
+    df["WR_HR_pct"] = df["WR_HR"] / (tb + 1e-9)
+    df["WR_pct"]    = df["WR"]    / (tb + 1e-9)
+    df["ACC_pct"]   = df["ACC"]   / (tb + 1e-9)
     return df
 
 
@@ -153,14 +158,18 @@ def _engineer_one(mix: dict) -> dict:
     ag = m["FAGG"] + m["CAGG"]
     e  = 1e-9
     m["TOTAL_BINDER"] = tb
-    m["w/b"]   = m["WATER"] / (tb + e)
-    m["b/a"]   = tb / (ag + e)
-    m["SCM%"]  = (m["FA"] + m["SC"]) / (tb + e)
-    m["CAGG%"] = m["CAGG"] / (ag + e)
-    m["FAGG%"] = m["FAGG"] / (ag + e)
-    m["PC%"]   = m["PC"]   / (tb + e)
-    m["FA%"]   = m["FA"]   / (tb + e)
-    m["SC%"]   = m["SC"]   / (tb + e)
+    m["w/b"]       = m["WATER"] / (tb + e)
+    m["b/a"]       = tb / (ag + e)
+    m["SCM%"]      = (m["FA"] + m["SC"]) / (tb + e)
+    m["CAGG%"]     = m["CAGG"] / (ag + e)
+    m["FAGG%"]     = m["FAGG"] / (ag + e)
+    m["PC%"]       = m["PC"]   / (tb + e)
+    m["FA%"]       = m["FA"]   / (tb + e)
+    m["SC%"]       = m["SC"]   / (tb + e)
+    m["AEA_pct"]   = m.get("AEA",   0.0) / (tb + e)
+    m["WR_HR_pct"] = m.get("WR_HR", 0.0) / (tb + e)
+    m["WR_pct"]    = m.get("WR",    0.0) / (tb + e)
+    m["ACC_pct"]   = m.get("ACC",   0.0) / (tb + e)
     return m
 
 
@@ -199,27 +208,37 @@ def get_derived(mix: dict) -> dict:
 
 
 def get_physics(mix: dict) -> dict:
-    """Compute physics-based quantities: solid volume, aggregate volume, binder, ACC%."""
+    """Compute physics-based quantities using Pfeiffer et al. 2024 Eq.19–20.
+
+    Vm    = sum(ingredient / density)  [material volume fraction]
+    Vfinal = Vm + air_fraction
+      air_fraction = 0.07 if AEA/PC >= 0.000244 kg/kg (≈0.39 oz/100lb cement)
+                   = 0.03 otherwise
+    Constraint: Vfinal in [0.95, 1.05]
+    """
     tb = mix.get("PC", 0.0) + mix.get("FA", 0.0) + mix.get("SC", 0.0)
+    Vm = sum(mix.get(v, 0.0) / DENSITIES[v] for v in RAW_VARS)
+    air_frac = 0.07 if mix.get("AEA", 0.0) / (mix.get("PC", 0.0) + 1e-9) >= 0.000244 else 0.03
     return {
-        "solid_vol":    sum(mix.get(v, 0.0) / DENSITIES[v] for v in RAW_VARS),
+        "Vfinal":       Vm + air_frac,
         "Vagg":         mix.get("FAGG", 0.0) / DENSITIES["FAGG"] + mix.get("CAGG", 0.0) / DENSITIES["CAGG"],
         "TOTAL_BINDER": tb,
-        "ACC_pct":      mix.get("ACC", 0.0) / (tb + 1e-9),
     }
 
 
 def get_physics_bounds(df: pd.DataFrame) -> dict:
-    """Compute physics constraint bounds from dataset statistics."""
-    tb      = df["PC"] + df["FA"] + df["SC"]
-    sv      = sum(df[v] / DENSITIES[v] for v in RAW_VARS)
-    vagg    = df["FAGG"] / DENSITIES["FAGG"] + df["CAGG"] / DENSITIES["CAGG"]
-    acc_pct = df["ACC"] / (tb + 1e-9)
+    """Return physics constraint bounds.
+
+    Vfinal bounds [0.95, 1.05]: covers ~88% of dataset (p5–p95), excludes physically
+    unreasonable mixes (implied air content > 15%).  Tighter than the paper's [0.99, 1.01]
+    to account for industrial dataset noise.
+    """
+    tb   = df["PC"] + df["FA"] + df["SC"]
+    vagg = df["FAGG"] / DENSITIES["FAGG"] + df["CAGG"] / DENSITIES["CAGG"]
     return {
-        "solid_vol":    {"min": float(sv.min()),      "max": float(sv.max())},
-        "Vagg":         {"min": float(vagg.min()),    "max": float(vagg.max())},
-        "TOTAL_BINDER": {"min": float(tb.min()),      "max": float(tb.max())},
-        "ACC_pct":      {"min": float(acc_pct.min()), "max": float(acc_pct.max())},
+        "Vfinal":       {"min": 0.95,               "max": 1.05},
+        "Vagg":         {"min": float(vagg.min()),  "max": float(vagg.max())},
+        "TOTAL_BINDER": {"min": float(tb.min()),    "max": float(tb.max())},
     }
 
 

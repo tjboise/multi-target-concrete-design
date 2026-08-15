@@ -68,7 +68,7 @@ Each of the 10 decision variables is bounded by the observed min/max in the data
 
 #### Layer 2 — Derived ratio constraints
 
-Eight dimensionless ratios must stay within their dataset ranges. These prevent physically degenerate mixes (e.g., zero binder, pure-aggregate mixes) without hard-coding domain-specific thresholds.
+Twelve dimensionless ratios must stay within their dataset ranges. The first eight prevent physically degenerate mixes (e.g., zero binder, pure-aggregate mixes); the last four cap admixture dosages as a fraction of total binder, preventing proportions that are technically within raw bounds but are not observed in practice.
 
 | Ratio | Formula | Min | Max |
 |-------|---------|----:|----:|
@@ -80,19 +80,22 @@ Eight dimensionless ratios must stay within their dataset ranges. These prevent 
 | PC% | PC / (PC+FA+SC) | 0.235 | 1.000 |
 | FA% | FA / (PC+FA+SC) | 0.000 | 0.375 |
 | SC% | SC / (PC+FA+SC) | 0.000 | 0.717 |
+| AEA\_pct | AEA / (PC+FA+SC) | 0.000 | 0.003 |
+| WR\_HR\_pct | WR\_HR / (PC+FA+SC) | 0.000 | 0.012 |
+| WR\_pct | WR / (PC+FA+SC) | 0.000 | 0.020 |
+| ACC\_pct | ACC / (PC+FA+SC) | 0.000 | 0.061 |
 
 #### Layer 3 — Physics constraints
 
-Four constraints derived from physical principles and material densities (Pfeiffer et al. 2024, Table 4). Bounds are taken from the dataset distribution.
+Three constraints grounded in concrete volume physics. Material densities follow Pfeiffer et al. (2024), Table 4. The `Vfinal` bound is fixed (not dataset-derived); `Vagg` and `TOTAL_BINDER` bounds come from the dataset distribution.
 
 | Constraint | Formula | Min | Max | Physical meaning |
 |------------|---------|----:|----:|-----------------|
-| `solid_vol` | Σ(massᵢ / ρᵢ) for all 10 ingredients | 0.753 m³/m³ | 1.034 m³/m³ | Total solid volume cannot exceed 1 m³; remainder is air |
+| `Vfinal` | Vm + 0.07 if AEA/PC ≥ 0.000244; else Vm + 0.03 | 0.950 | 1.050 | Final concrete volume per m³, accounting for entrained air (Pfeiffer et al. 2024, Eq. 19–20). Vm = Σ(massᵢ / ρᵢ). Air fraction: 7 % when AEA is present, 3 % otherwise. Covers 88 % of the dataset (5th–95th percentile); the paper's design target is the tighter [0.99, 1.01]. |
 | `Vagg` | (FAGG + CAGG) / 2650 | 0.413 m³/m³ | 0.778 m³/m³ | Volume of aggregates in the mix (ρFAGG = ρCAGG = 2650 kg/m³) |
 | `TOTAL_BINDER` | PC + FA + SC | 207.7 kg/m³ | 590.3 kg/m³ | Total cementitious content; prevents extreme binder reduction that fools the surrogate |
-| `ACC_pct` | ACC / (PC+FA+SC) | 0.000 | 0.061 | Accelerator dosage as a fraction of binder; caps surrogate exploitation via extreme ACC |
 
-**Rationale for Layer 3:** Without these constraints, the optimizer exploits the CatBoost surrogate by simultaneously minimizing binder (low GWP) and maximizing accelerator (ACC) to predict high strength — producing mixes with `TOTAL_BINDER` below 170 kg/m³ and `ACC` above 22 kg/m³, both far outside any real-world mix. The physics constraints close this exploitation gap.
+**Rationale for Layer 3:** Without these constraints, the optimizer exploits the CatBoost surrogate by simultaneously minimizing binder (low GWP) and maximizing accelerator (ACC) to predict high strength — producing mixes with `TOTAL_BINDER` below 170 kg/m³ and `ACC` above 22 kg/m³, both far outside any real-world mix. The physics constraints close this exploitation gap. The `Vfinal` constraint replaces the earlier `solid_vol` constraint and is more physically accurate: it separates the material volume fraction (Vm) from entrained air, matching the volume model used in the source dataset paper.
 
 ---
 
