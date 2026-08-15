@@ -370,26 +370,6 @@ _KNOWLEDGE_TABLE = """\
   Mix density ratios:
     b/agg   = Binder / (FAGG + CAGG)                (binder-to-aggregate ratio; lower → lower GWP risk: lower strength)
 
-  GWP sensitivity (approximate, per 10% binder fraction shift):
-    Shifting 10% of Binder from PC → SC saves ≈ (1.048-0.264)·0.10·Binder kg CO2/m3
-    Shifting 10% of Binder from PC → FA saves ≈ (1.048-0.328)·0.10·Binder kg CO2/m3
-
-## Two-Path Optimization Strategy
-
-  PATH 1 — Binder Substitution (maintain binder volume, change composition):
-    Replace PC with SC (preferred) or FA to lower GWP while keeping total binder roughly constant.
-    If strength drops, reduce WATER or increase WR_HR to recover w/b.
-    Best for: improving GWP without sacrificing strength; easier to control.
-
-  PATH 2 — Binder Volume Reduction (reduce b/agg ratio):
-    Reduce total binder content; compensate with higher FAGG+CAGG, higher WR_HR dosage.
-    This pushes the low-GWP frontier further than Path 1 alone.
-    Risk: strength may drop — counter with aggressive WR_HR and lower WATER simultaneously.
-    Best for: mixes where binder fraction is still high (b/agg > 0.3).
-
-  COMBINED: SC-dominant binder (SC% 40-70%) + low PC% + WR_HR to reduce w/b below 0.42.
-            Prevents premature convergence to pure Path 1 (high-SC but still high-binder) solutions.
-
 """
 
 
@@ -534,10 +514,15 @@ def build_hybrid_prompt(elite: list, raw_b: dict, der_b: dict,
         "Every proposed mix must satisfy ALL constraints listed above. Verify each mix",
         "before including it in your response.",
         "",
-        f"Return exactly {cfg.llm_n_solutions} mixes as a JSON array:",
-        '  [{"mix": {"PC": ..., "FA": ..., "SC": ..., "FAGG": ..., "CAGG": ...,',
-        '            "WATER": ..., "AEA": ..., "WR_HR": ..., "WR": ..., "ACC": ...}}, ...]',
-        "All values in kg/m3.",
+        f"Return exactly {cfg.llm_n_solutions} mixes as a JSON array. Follow this format exactly:",
+        "[",
+        '  {"mix": {"PC": 200.0, "FA": 60.0, "SC": 110.0, "FAGG": 800.0, "CAGG": 900.0,',
+        '           "WATER": 148.0, "AEA": 0.0, "WR_HR": 2.5, "WR": 0.0, "ACC": 0.0}},',
+        '  {"mix": {"PC": ..., "FA": ..., "SC": ..., "FAGG": ..., "CAGG": ...,',
+        '           "WATER": ..., "AEA": ..., "WR_HR": ..., "WR": ..., "ACC": ...}},',
+        f"  ... ({cfg.llm_n_solutions} elements total)",
+        "]",
+        "All values in kg/m3. Output only the JSON array — no surrounding text, no markdown fences.",
     ]
 
     return "\n".join(lines)
