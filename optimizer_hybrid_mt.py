@@ -126,6 +126,20 @@ def _predict(mix: dict, meta: dict) -> dict:
 def _to_dict(x: np.ndarray) -> dict:
     return {v: float(x[i]) for i, v in enumerate(RAW_VARS)}
 
+def _is_feasible(x: np.ndarray, der_b: dict, phys_b: dict) -> bool:
+    """Check Layer 2 + 3 feasibility for a single solution vector.
+    Layer 1 (raw bounds) is guaranteed by np.clip in the caller."""
+    mix = _to_dict(x)
+    der = get_derived(mix)
+    for k, b in der_b.items():
+        if not (b["min"] - 1e-6 <= der.get(k, 0.0) <= b["max"] + 1e-6):
+            return False
+    pv = get_physics(mix)
+    for k, b in phys_b.items():
+        if not (b["min"] - 1e-6 <= pv.get(k, 0.0) <= b["max"] + 1e-6):
+            return False
+    return True
+
 def _to_array(mix: dict) -> np.ndarray:
     return np.array([mix[v] for v in RAW_VARS])
 
@@ -674,6 +688,7 @@ def run_hybrid(raw_b: dict, der_b: dict, phys_b: dict,
     hv_history = []
     llm_calls = 0
     parse_fails = 0
+    llm_infeasible = 0   # LLM solutions parsed OK but failed Layer 2/3 checks
 
     label = cfg.name if not use_llm else f"{cfg.name} (F={cfg.llm_frequency}, N={cfg.llm_n_solutions})"
     print(f"\n{'='*62}")
@@ -715,11 +730,19 @@ def run_hybrid(raw_b: dict, der_b: dict, phys_b: dict,
                 llm_calls += 1
                 parse_fails += n_fails
 
-                # Replace worst N offspring (last N rows) with LLM solutions
-                n_inject = min(len(new_sols), cfg.llm_n_solutions)
+                # Pre-filter: only inject LLM solutions that pass Layer 2+3 checks.
+                # Infeasible solutions are discarded here rather than wasting offspring
+                # slots — the remaining slots stay as NSGA-II-generated offspring.
+                feasible_sols = [x for x in new_sols
+                                 if _is_feasible(x, der_b, phys_b)]
+                n_infeas_llm = len(new_sols) - len(feasible_sols)
+                llm_infeasible += n_infeas_llm
+                n_inject = min(len(feasible_sols), cfg.llm_n_solutions)
                 for j in range(n_inject):
-                    offspring[-(j + 1)] = new_sols[j]
+                    offspring[-(j + 1)] = feasible_sols[j]
                 note = f"+LLM×{n_inject}"
+                if n_infeas_llm:
+                    note += f"(dropped {n_infeas_llm} infeas)"
 
         # ── Evaluate offspring ─────────────────────────────────
         off_obj, off_feas = evaluate_population(offspring, raw_b, der_b, phys_b, meta, cfg.constraint_mode)
@@ -763,7 +786,7 @@ def run_hybrid(raw_b: dict, der_b: dict, phys_b: dict,
             })
 
     hv_final = _hv(final_pareto)
-    print(f"\n  LLM calls: {llm_calls}  Parse fails: {parse_fails}")
+    print(f"\n  LLM calls: {llm_calls}  Parse fails: {parse_fails}  LLM infeasible dropped: {llm_infeasible}")
     print(f"  Final Pareto: {len(final_pareto)} solutions  HV: {hv_final:.1f}")
 
     return {
@@ -771,6 +794,7 @@ def run_hybrid(raw_b: dict, der_b: dict, phys_b: dict,
         "hv_history": hv_history,
         "llm_calls": llm_calls,
         "parse_fails": parse_fails,
+        "llm_infeasible": llm_infeasible,
     }
 
 
@@ -797,8 +821,9 @@ def compute_hybrid_metrics(result: dict, nsga_ref: list) -> dict:
             "spread":     0.0,
             "n_pareto":   len(pareto),
             "n_nsga":     len(nsga_ref),
-            "llm_calls":  result["llm_calls"],
-            "parse_fails": result["parse_fails"],
+            "llm_calls":      result["llm_calls"],
+            "parse_fails":    result["parse_fails"],
+            "llm_infeasible": result.get("llm_infeasible", 0),
         }
 
     hv_nsga = _hv(nsga_ref)
