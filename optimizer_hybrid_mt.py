@@ -87,6 +87,13 @@ class HybridConfig:
     llm_n_solutions: int = 10    # N: solutions generated per LLM call
     llm_n_elite: int = 10        # elite solutions shown to LLM as few-shot context
 
+    # Constraint handling strategy
+    # "feasibility_first" : infeasible solutions stay in population but are dominated
+    #                        by any feasible solution (Deb 2002 NSGA-II standard)
+    # "death_penalty"     : infeasible solutions receive obj = [inf, inf] and are
+    #                        driven out within 1-2 generations
+    constraint_mode: str = "feasibility_first"
+
     # Prompt components
     use_knowledge_table: bool = True  # material GWP factors + strength effects
 
@@ -128,12 +135,24 @@ def _to_array(mix: dict) -> np.ndarray:
 # ──────────────────────────────────────────────────────────────
 
 def evaluate_population(pop: np.ndarray, raw_b: dict, der_b: dict,
-                        phys_b: dict, meta: dict) -> tuple:
+                        phys_b: dict, meta: dict,
+                        constraint_mode: str = "feasibility_first") -> tuple:
     """
     Evaluate all individuals.
+
     Returns:
         obj      : (n, 2) array of [GWP, -28d_strength]  (both minimized)
-        feasible : (n,)   bool array — True if all derived + physics constraints satisfied
+                   In death_penalty mode, infeasible rows are set to [inf, inf].
+        feasible : (n,)   bool array — True if all Layer-2 and Layer-3 constraints pass.
+                   Layer-1 (raw bounds) is enforced by construction (clipping) and never
+                   checked here.
+
+    constraint_mode:
+        "feasibility_first" — infeasible solutions remain with true objective values but
+                              are dominated by any feasible solution in _dominance().
+        "death_penalty"     — infeasible solutions get obj = [inf, inf]; they are
+                              dominated by every feasible solution automatically, no
+                              special logic needed in _dominance().
     """
     n = len(pop)
     obj = np.empty((n, 2))
@@ -157,6 +176,9 @@ def evaluate_population(pop: np.ndarray, raw_b: dict, der_b: dict,
                 if not (b["min"] - 1e-6 <= v <= b["max"] + 1e-6):
                     feasible[i] = False
                     break
+
+    if constraint_mode == "death_penalty":
+        obj[~feasible] = np.inf
 
     return obj, feasible
 
@@ -647,7 +669,7 @@ def run_hybrid(raw_b: dict, der_b: dict, phys_b: dict,
         np.random.uniform(raw_b[v]["min"], raw_b[v]["max"], cfg.pop_size)
         for v in RAW_VARS
     ])
-    obj, feas = evaluate_population(pop, raw_b, der_b, phys_b, meta)
+    obj, feas = evaluate_population(pop, raw_b, der_b, phys_b, meta, cfg.constraint_mode)
 
     hv_history = []
     llm_calls = 0
@@ -700,7 +722,7 @@ def run_hybrid(raw_b: dict, der_b: dict, phys_b: dict,
                 note = f"+LLM×{n_inject}"
 
         # ── Evaluate offspring ─────────────────────────────────
-        off_obj, off_feas = evaluate_population(offspring, raw_b, der_b, phys_b, meta)
+        off_obj, off_feas = evaluate_population(offspring, raw_b, der_b, phys_b, meta, cfg.constraint_mode)
 
         # ── Environmental selection (parent + offspring) ───────
         combined = np.vstack([pop, offspring])
