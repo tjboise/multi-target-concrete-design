@@ -252,12 +252,18 @@ Replicates in which the LLM generated more non-dominated solutions showed larger
 
 ### Step 3 — Pareto Front Diversity
 
-Average pairwise Euclidean distance between Pareto front solutions in normalized objective space.
+**Diversity metric:** mean pairwise Euclidean distance between all solutions on the final Pareto front, computed in normalized objective space:
+
+$$D = \frac{2}{n(n-1)} \sum_{i < j} \left\| \tilde{x}_i - \tilde{x}_j \right\|_2$$
+
+where $\tilde{x}_i = \bigl(\frac{\text{GWP}_i - 169}{534.5 - 169},\; 1 - \frac{\text{str}_i - 17.4}{106.1 - 17.4}\bigr)$ normalizes each solution to [0, 1]². Larger *D* means solutions are spread more broadly across the trade-off curve.
+
+![Pareto front diversity — box plot with individual replicates](results/figures/step3_paired.png)
 
 | | Baseline | Hybrid | Δ |
 |--|:--------:|:------:|:-:|
 | Mean diversity | 0.174 | 0.198 | **+0.024 (+13.6%)** |
-| SD | 0.035 | 0.035 | — |
+| SD | 0.034 | 0.035 | — |
 | % replicates with higher diversity | — | — | **70%** |
 
 - Paired t-test (two-sided): t = 3.14, **p = 0.0039**
@@ -303,7 +309,8 @@ Average pairwise Euclidean distance between all Pareto front solutions in normal
 │   │   ├── pareto_front_everyg.png
 │   │   ├── convergence_everyg.png
 │   │   ├── delta_hv_incremental_everyg.png
-│   │   └── step2_area.png
+│   │   ├── step2_area.png
+│   │   └── step3_paired.png
 │   ├── grid_everyg_hyb_rep{01-30}/   # Hybrid runs (pareto_front.csv, hv_history.csv, metrics.csv, llm_solutions.csv)
 │   ├── grid_everyg_base_rep{01-30}/  # Baseline NSGA-II runs
 │   └── grid_everyg_analysis.csv      # Per-replicate summary
