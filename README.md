@@ -232,6 +232,12 @@ Change in mean ΔHV from one generation to the next. **Red bars**: LLM contribut
 | Fraction useful (feasible **and** non-dominated) | 13.8% | 3.3% |
 | Median distance to Pareto front (normalized) | 0.020 | 0.009 |
 
+#### LLM solution quality over generations
+
+![LLM solution quality stacked area — 100 generations, 30 replicates](results/figures/step2_area.png)
+
+Each generation, 5 LLM solutions are injected. The stacked area shows their breakdown: useful (feasible and non-dominated, red), feasible but dominated (orange), and infeasible (grey). Quality peaks in early generations when the Pareto front is sparse, then declines as NSGA-II refines it.
+
 **Correlations with per-replicate ΔHV** (n = 30):
 
 | Predictor | r | p |
@@ -296,7 +302,8 @@ Average pairwise Euclidean distance between all Pareto front solutions in normal
 │   ├── figures/                  # Figures for README
 │   │   ├── pareto_front_everyg.png
 │   │   ├── convergence_everyg.png
-│   │   └── delta_hv_incremental_everyg.png
+│   │   ├── delta_hv_incremental_everyg.png
+│   │   └── step2_area.png
 │   ├── grid_everyg_hyb_rep{01-30}/   # Hybrid runs (pareto_front.csv, hv_history.csv, metrics.csv, llm_solutions.csv)
 │   ├── grid_everyg_base_rep{01-30}/  # Baseline NSGA-II runs
 │   └── grid_everyg_analysis.csv      # Per-replicate summary
