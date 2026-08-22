@@ -1,0 +1,2 @@
+HV_hybrid,HV_nsga,HV_ratio,GD,IGD,spread,n_pareto,n_nsga,llm_calls,parse_fails,llm_infeasible
+0.5333,0.0,0.0,0.0,0.0,0.0,45,0,100,0,0

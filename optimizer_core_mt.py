@@ -47,10 +47,11 @@ RAW_VARS     = ["PC", "FA", "SC", "FAGG", "CAGG", "WATER", "AEA", "WR_HR", "WR",
 DERIVED_VARS = ["w/b", "b/a", "SCM%", "CAGG%", "FAGG%", "PC%", "FA%", "SC%",
                 "AEA_pct", "WR_HR_pct", "WR_pct", "ACC_pct"]
 
-# Material densities (kg/m³) from Pfeiffer et al. 2024, Table 4
+# Material densities (kg/m³) from Pfeiffer et al. 2024, Table 4.
+# CAGG=2710: limestone 3/4 in. average; FAGG=2630: fine aggregate average.
 DENSITIES = {
     "PC": 3150, "FA": 2200, "SC": 2900,
-    "FAGG": 2650, "CAGG": 2650, "WATER": 1000,
+    "FAGG": 2630, "CAGG": 2710, "WATER": 1000,
     "AEA": 1010, "WR_HR": 1080, "WR": 1140, "ACC": 1340,
 }
 # Physics-based derived quantities used as additional constraints

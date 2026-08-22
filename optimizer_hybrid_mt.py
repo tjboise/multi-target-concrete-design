@@ -84,8 +84,14 @@ class HybridConfig:
 
     # LLM intervention (set llm_frequency=0 for pure NSGA-II baseline)
     llm_frequency: int = 10      # F: call LLM every F generations
+    llm_start_gen: int = 0       # earliest generation to inject (0 = from the start)
     llm_n_solutions: int = 10    # N: solutions generated per LLM call
     llm_n_elite: int = 10        # elite solutions shown to LLM as few-shot context
+    # Stagnation-based injection: only inject when HV has not improved by
+    # more than `stagnation_threshold` over the last `stagnation_window` gens.
+    # Set stagnation_window=0 to disable stagnation detection (always inject).
+    stagnation_window: int = 0      # look-back window (gens); 0 = disabled
+    stagnation_threshold: float = 0.005  # max tolerated HV gain over the window
 
     # Constraint handling strategy
     # "death_penalty"     : infeasible solutions receive obj = [inf, inf] and are
@@ -95,10 +101,21 @@ class HybridConfig:
     # "feasibility_first" : infeasible solutions stay with true objective values but are
     #                        dominated by any feasible solution (Deb 2002 NSGA-II standard);
     #                        they are gradually pushed out over several generations.
-    constraint_mode: str = "death_penalty"
+    constraint_mode: str = "feasibility_first"
 
-    # Prompt components
-    use_knowledge_table: bool = True  # material GWP factors + strength effects
+    # Prompt components (leave-one-out ablation flags)
+    use_objectives: bool = True        # Section 1: optimization objectives + conflict statement
+    use_knowledge_table: bool = True   # Section 2: material GWP factors + strength effects
+    use_constraints: bool = True       # Section 3: all three constraint layers
+    use_elite: bool = True             # Section 4: current Pareto elite solutions
+    use_gap_targeting: bool = True     # Section 5: gap/extreme analysis + structured task allocation
+
+    # Injection strategy:
+    #   "replace" (default): LLM solutions overwrite the N worst offspring before
+    #                        environmental selection.
+    #   "augment": LLM solutions are appended to the offspring pool; NSGA-II offspring
+    #              are never discarded, so the selection pool is pop_size + offspring_size + N.
+    llm_inject_mode: str = "replace"
 
     # API
     gemini_api_key: str = ""
@@ -113,8 +130,8 @@ class HybridConfig:
     seed: int = None
 
     # Paths
-    data_path: str = r"Concrete_Data_SI.csv"
-    model_pkl: str = r"..\low_carbon_concrete\concrete_catboost_optimized.pkl"
+    data_path: str = r"Concrete_Data_SI_clean.csv"
+    model_pkl: str = r"..\low_carbon_concrete\concrete_catboost_optimized_clean.pkl"
     output_prefix: str = r"results\hybrid_f10_n10"
 
 
@@ -428,138 +445,222 @@ _DERIVED_FORMULAS = [
 ]
 
 
+def _compute_pareto_gaps(coords: list, top_n: int = 3) -> list:
+    """Return the top_n largest gaps between adjacent Pareto front points.
+
+    coords : list of (gwp, strength) tuples
+    Returns list of (mid_gwp, mid_str, p1, p2) sorted largest-gap first.
+    """
+    if len(coords) < 2:
+        return []
+    pts = sorted(coords, key=lambda p: p[0])
+    gwp_rng = pts[-1][0] - pts[0][0] + 1e-6
+    str_rng = max(p[1] for p in pts) - min(p[1] for p in pts) + 1e-6
+    gaps = []
+    for i in range(len(pts) - 1):
+        p1, p2 = pts[i], pts[i + 1]
+        dist = ((p2[0]-p1[0])/gwp_rng)**2 + ((p2[1]-p1[1])/str_rng)**2
+        mid  = ((p1[0]+p2[0])/2, (p1[1]+p2[1])/2)
+        gaps.append((dist**0.5, mid, p1, p2))
+    gaps.sort(reverse=True)
+    return [(mid, p1, p2) for _, mid, p1, p2 in gaps[:top_n]]
+
+
 def build_hybrid_prompt(elite: list, raw_b: dict, der_b: dict,
-                        phys_b: dict, cfg: HybridConfig) -> str:
-    """Build the LLM prompt for one intervention step."""
+                        phys_b: dict, cfg: HybridConfig,
+                        n_solutions: int = None,
+                        feedback: dict = None) -> str:
+    """Build the LLM prompt for one intervention step.
+
+    feedback (optional): dict with keys prev_hv, curr_hv,
+        prev_gwp_min, prev_gwp_max, prev_str_min, prev_str_max.
+        When provided, a 'Previous Injection Outcome' section is prepended.
+    """
     lines = [
         "You are an expert concrete mix designer assisting a multi-objective genetic algorithm.",
         "",
-        "## Optimization Objectives",
-        "Simultaneously optimize two competing objectives:",
-        "  1. MINIMIZE GWP (kg CO2-eq/m3) — greenhouse gas emission footprint",
-        "  2. MAXIMIZE 28-day compressive strength (MPa) — structural performance",
-        "",
-        "These objectives conflict: cementitious binder drives both strength and GWP.",
-        "A Pareto-optimal mix cannot improve one objective without worsening the other.",
-        "",
     ]
 
+    # ── Section 1: Objectives ────────────────────────────────
+    if cfg.use_objectives:
+        lines += [
+            "## Optimization Objectives",
+            "Simultaneously optimize two competing objectives:",
+            "  1. MINIMIZE GWP (kg CO2-eq/m3) — greenhouse gas emission footprint",
+            "  2. MAXIMIZE 28-day compressive strength (MPa) — structural performance",
+            "",
+            "These objectives conflict: cementitious binder drives both strength and GWP.",
+            "A Pareto-optimal mix cannot improve one objective without worsening the other.",
+            "",
+        ]
+
+    # ── Section 2: Knowledge Table ───────────────────────────
     if cfg.use_knowledge_table:
         lines.append(_KNOWLEDGE_TABLE)
 
-    # ── Layer 1 ──────────────────────────────────────────────
-    lines += [
-        "## Constraints",
-        "",
-        "### Layer 1 — Raw Ingredient Bounds (kg/m3)",
-        "All 10 ingredient values must stay within these dataset-derived bounds:",
-        "",
-    ]
-    col = max(len(v) for v in RAW_VARS) + 2
-    for v in RAW_VARS:
-        b = raw_b[v]
-        lines.append(f"  {v:<{col}}: [{b['min']:.1f}, {b['max']:.1f}]")
+    # ── Section 3: Constraints ───────────────────────────────
+    if cfg.use_constraints:
+        lines += [
+            "## Constraints",
+            "",
+            "### Layer 1 — Raw Ingredient Bounds (kg/m3)",
+            "All 10 ingredient values must stay within these dataset-derived bounds:",
+            "",
+        ]
+        col = max(len(v) for v in RAW_VARS) + 2
+        for v in RAW_VARS:
+            b = raw_b[v]
+            lines.append(f"  {v:<{col}}: [{b['min']:.1f}, {b['max']:.1f}]")
 
-    # ── Layer 2 ──────────────────────────────────────────────
-    lines += [
-        "",
-        "### Layer 2 — Derived Ratio Constraints",
-        "  Binder = PC + FA + SC   (total cementitious content, kg/m3)",
-        "  Agg    = FAGG + CAGG    (total aggregate, kg/m3)",
-        "",
-        f"  {'Ratio':<12} {'Formula':<25} {'Min':>8}  {'Max':>8}",
-        f"  {'-'*12} {'-'*25} {'-'*8}  {'-'*8}",
-    ]
-    for var, formula in _DERIVED_FORMULAS:
-        if var in der_b:
-            b = der_b[var]
-            lines.append(f"  {var:<12} {formula:<25} {b['min']:>8.3f}  {b['max']:>8.3f}")
-
-    # ── Layer 3 ──────────────────────────────────────────────
-    lines += [
-        "",
-        "### Layer 3 — Physics Constraints (Pfeiffer et al. 2024, Eq. 19–20)",
-        "  Material densities (kg/m3):",
-        "    PC=3150  FA=2200  SC=2900  FAGG=2650  CAGG=2650",
-        "    WATER=1000  AEA=1010  WR_HR=1080  WR=1140  ACC=1340",
-        "",
-        "  Vm = PC/3150 + FA/2200 + SC/2900 + FAGG/2650 + CAGG/2650",
-        "     + WATER/1000 + AEA/1010 + WR_HR/1080 + WR/1140 + ACC/1340",
-        "",
-        "  Vfinal = Vm + 0.07   if AEA/PC >= 0.000244  (7% entrained air — AEA present)",
-        "         = Vm + 0.03   if AEA/PC <  0.000244  (3% entrapped air — no AEA)",
-        "  Constraint: 0.950 <= Vfinal <= 1.050",
-    ]
-    if "Vagg" in phys_b:
-        b = phys_b["Vagg"]
         lines += [
             "",
-            "  Vagg = FAGG/2650 + CAGG/2650",
-            f"  Constraint: {b['min']:.3f} <= Vagg <= {b['max']:.3f}",
+            "### Layer 2 — Derived Ratio Constraints",
+            "  Binder = PC + FA + SC   (total cementitious content, kg/m3)",
+            "  Agg    = FAGG + CAGG    (total aggregate, kg/m3)",
+            "",
+            f"  {'Ratio':<12} {'Formula':<25} {'Min':>8}  {'Max':>8}",
+            f"  {'-'*12} {'-'*25} {'-'*8}  {'-'*8}",
         ]
-    if "TOTAL_BINDER" in phys_b:
-        b = phys_b["TOTAL_BINDER"]
+        for var, formula in _DERIVED_FORMULAS:
+            if var in der_b:
+                b = der_b[var]
+                lines.append(f"  {var:<12} {formula:<25} {b['min']:>8.3f}  {b['max']:>8.3f}")
+
+        if "TOTAL_BINDER" in phys_b:
+            b = phys_b["TOTAL_BINDER"]
+            lines += [
+                "",
+                "### Layer 3 — Binder Content",
+                f"  TOTAL_BINDER = PC + FA + SC  must be in [{b['min']:.0f}, {b['max']:.0f}] kg/m3",
+                "  (Volume physics — Vfinal, Vagg — are checked automatically; focus on Layers 1–2.)",
+            ]
+
+    # ── Section 4: Pareto Elite ──────────────────────────────
+    if cfg.use_elite:
         lines += [
             "",
-            "  TOTAL_BINDER = PC + FA + SC",
-            f"  Constraint: {b['min']:.1f} <= TOTAL_BINDER <= {b['max']:.1f} kg/m3",
+            "## Current Pareto-Elite Solutions (sorted by GWP, low → high)",
+            "These are the best non-dominated feasible mixes found by NSGA-II so far.",
+            "",
+        ]
+        for i, e in enumerate(elite):
+            mix = e["mix"]
+            pc  = mix.get("PC", 0); fa = mix.get("FA", 0); sc = mix.get("SC", 0)
+            tb  = pc + fa + sc
+            wb   = mix.get("WATER", 0) / tb if tb > 0 else 0
+            agg  = mix.get("FAGG", 0) + mix.get("CAGG", 0)
+            bagg = tb / agg if agg > 0 else 0
+            lines.append(
+                f"  [{i+1}] GWP={e['GWP']:.1f} | 28d={e['28d_MPa']:.1f} MPa"
+                f" | w/b={wb:.3f} | binder={tb:.0f} kg/m3 | b/agg={bagg:.3f}"
+            )
+            lines.append(
+                f"       PC%={100*pc/tb if tb>0 else 0:.0f}%"
+                f"  FA%={100*fa/tb if tb>0 else 0:.0f}%"
+                f"  SC%={100*sc/tb if tb>0 else 0:.0f}%"
+            )
+            lines.append("       " + "  ".join(f"{k}={v:.1f}" for k, v in mix.items()))
+        lines.append("")
+
+    # ── Feedback from previous injection (if available) ──────
+    if feedback:
+        dv = feedback["curr_hv"] - feedback["prev_hv"]
+        sign = "+" if dv >= 0 else ""
+        lines += [
+            "## Pareto Front Evolution Since Last Injection",
+            f"  Hypervolume change: {sign}{dv:.4f}"
+            + (" [IMPROVED]" if dv > 0 else " [NOT IMPROVED -- try a different strategy]"),
+            f"  (Hypervolume measures objective-space coverage — larger is better.)",
+            "",
         ]
 
-    # ── Elite ────────────────────────────────────────────────
-    lines += [
-        "",
-        "## Current Pareto-Elite Solutions (sorted by GWP, low → high)",
-        "These are the best non-dominated feasible mixes found by NSGA-II so far.",
-        "",
-    ]
-    for i, e in enumerate(elite):
-        mix = e["mix"]
-        pc  = mix.get("PC", 0); fa = mix.get("FA", 0); sc = mix.get("SC", 0)
-        tb  = pc + fa + sc
-        wb   = mix.get("WATER", 0) / tb if tb > 0 else 0
-        agg  = mix.get("FAGG", 0) + mix.get("CAGG", 0)
-        bagg = tb / agg if agg > 0 else 0
-        lines.append(
-            f"  [{i+1}] GWP={e['GWP']:.1f} | 28d={e['28d_MPa']:.1f} MPa"
-            f" | w/b={wb:.3f} | binder={tb:.0f} kg/m3 | b/agg={bagg:.3f}"
-        )
-        lines.append(
-            f"       PC%={100*pc/tb if tb>0 else 0:.0f}%"
-            f"  FA%={100*fa/tb if tb>0 else 0:.0f}%"
-            f"  SC%={100*sc/tb if tb>0 else 0:.0f}%"
-        )
-        lines.append("       " + "  ".join(f"{k}={v:.1f}" for k, v in mix.items()))
-    lines.append("")
+        def _format_coords(coords):
+            parts = [f"({g:.1f}, {s:.1f})" for g, s in coords]
+            rows = []
+            for i in range(0, len(parts), 5):
+                rows.append("  " + "  ".join(parts[i:i + 5]))
+            return rows
+
+        prev_coords = feedback.get("prev_pareto_coords", [])
+        curr_coords = feedback.get("curr_pareto_coords", [])
+        if prev_coords:
+            lines.append(f"  Front BEFORE last injection ({len(prev_coords)} points, GWP / Strength MPa):")
+            lines += _format_coords(prev_coords)
+            lines.append("")
+        if curr_coords:
+            lines.append(f"  Front NOW ({len(curr_coords)} points, GWP / Strength MPa):")
+            lines += _format_coords(curr_coords)
+            lines.append("")
+
+            if cfg.use_gap_targeting:
+                # Gap analysis
+                gaps = _compute_pareto_gaps(curr_coords, top_n=3)
+                if gaps:
+                    lines.append("  Largest GAPS in current front (sparse/uncovered regions — high-priority targets):")
+                    for mid, p1, p2 in gaps:
+                        lines.append(
+                            f"    Between ({p1[0]:.1f}, {p1[1]:.1f}) and ({p2[0]:.1f}, {p2[1]:.1f})"
+                            f"  →  target ≈ GWP {mid[0]:.1f}, Strength {mid[1]:.1f} MPa"
+                        )
+                    lines.append("")
+
+                # Extreme analysis
+                min_gwp = min(g for g, _ in curr_coords)
+                max_str = max(s for _, s in curr_coords)
+                lines += [
+                    "  Current EXTREMES of the front:",
+                    f"    Lowest GWP:      {min_gwp:.1f} kg CO2e/m3"
+                    + f"  →  try to reach below {max(raw_b['PC']['min']*1.5, min_gwp - 12):.0f}",
+                    f"    Highest Strength: {max_str:.1f} MPa"
+                    + f"  →  try to push above {min(raw_b['SC']['max']*0.5 + 80, max_str + 6):.0f}",
+                    "",
+                ]
 
     # ── Task ─────────────────────────────────────────────────
+    elite_gwps = [e["GWP"] for e in elite]
+    elite_strs = [e["28d_MPa"] for e in elite]
+    n = n_solutions if n_solutions is not None else cfg.llm_n_solutions
+    n_gap   = max(1, n // 3)    # at least 1/3 targeting gaps
+    n_ext   = max(1, n // 4)    # at least 1/4 pushing extremes
+    n_free  = max(0, n - n_gap - n_ext)
+
+    if cfg.use_gap_targeting:
+        lines += [
+            f"## Task: Generate {n} New Candidate Mixes",
+            "",
+            "Goal: INCREASE HYPERVOLUME by placing solutions in uncovered or sparse regions of the objective space.",
+            "",
+            f"Allocate your {n} solutions as follows:",
+            f"  • {n_gap} solution(s) — fill the LARGEST GAPS identified above (interpolate between the bounding elite mixes)",
+            f"  • {n_ext} solution(s) — push EXTREME ends: very low GWP (< current minimum) OR very high strength",
+            f"  • {n_free} solution(s) — free diversity (any non-dominated region not yet covered)",
+            "",
+            "For gap-filling: look at the two elite mixes bounding the gap and generate intermediate/beyond mixes.",
+            "For extreme GWP: use maximum fly ash + slag replacement, minimum PC content, low water content.",
+            "For extreme strength: use high binder content, low w/b ratio, high GGBS or silica fume.",
+            "",
+        ]
+    else:
+        lines += [
+            f"## Task: Generate {n} New Candidate Mixes",
+            "",
+            "Goal: INCREASE HYPERVOLUME by generating diverse, non-dominated mixes that extend or fill the Pareto front.",
+            "",
+            f"Generate {n} candidate mixes covering a range of trade-offs between low GWP and high strength.",
+            "Aim for variety: some should focus on very low GWP, some on very high strength, and others on intermediate trade-offs.",
+            "",
+        ]
+
     lines += [
-        f"## Task: Generate {cfg.llm_n_solutions} New Candidate Mixes",
+        "Verify every mix satisfies all constraint layers before returning.",
         "",
-        "You are augmenting NSGA-II's offspring pool. The mixes you generate will be",
-        "injected into the next generation's environmental selection alongside the genetic",
-        "algorithm's own offspring. Mixes that are Pareto-dominated will be selected against;",
-        "those that push or extend the current Pareto front will survive and propagate into",
-        "future generations.",
-        "",
-        f"Generate {cfg.llm_n_solutions} mixes that you believe have the best chance of being",
-        "non-dominated relative to the current Pareto front shown above.",
-        "",
-        "Study the elite solutions carefully: identify their compositional patterns, note where",
-        "the GWP–strength trade-off is densely covered and where it is sparse, and reason about",
-        "what changes to ingredient proportions could push the front outward in any direction.",
-        "Draw on your material science knowledge and the formulas above to verify that your",
-        "proposals are physically reasonable and satisfy all three constraint layers.",
-        "",
-        "Every proposed mix must satisfy ALL constraints listed above. Verify each mix",
-        "before including it in your response.",
-        "",
-        f"Return exactly {cfg.llm_n_solutions} mixes as a JSON array. Follow this format exactly:",
+        f"Return exactly {n} mixes as a JSON array. Follow this format exactly:",
         "[",
         '  {"mix": {"PC": 200.0, "FA": 60.0, "SC": 110.0, "FAGG": 800.0, "CAGG": 900.0,',
         '           "WATER": 148.0, "AEA": 0.0, "WR_HR": 2.5, "WR": 0.0, "ACC": 0.0}},',
         '  {"mix": {"PC": ..., "FA": ..., "SC": ..., "FAGG": ..., "CAGG": ...,',
         '           "WATER": ..., "AEA": ..., "WR_HR": ..., "WR": ..., "ACC": ...}},',
-        f"  ... ({cfg.llm_n_solutions} elements total)",
+        f"  ... ({n} elements total)",
         "]",
         "All values in kg/m3. Output only the JSON array — no surrounding text, no markdown fences.",
     ]
@@ -590,12 +691,15 @@ def _parse_llm_array(text: str):
 
 
 def call_llm_for_solutions(elite: list, raw_b: dict, der_b: dict, phys_b: dict,
-                            cfg: HybridConfig, client, genai_types) -> tuple:
+                            cfg: HybridConfig, client, genai_types,
+                            n_solutions: int = None,
+                            feedback: dict = None) -> tuple:
     """
-    Single LLM call to generate N candidate solutions.
+    Single LLM call requesting n_solutions candidates (defaults to cfg.llm_n_solutions).
     Returns (list of np.ndarray, n_parse_fails).
     """
-    prompt = build_hybrid_prompt(elite, raw_b, der_b, phys_b, cfg)
+    prompt = build_hybrid_prompt(elite, raw_b, der_b, phys_b, cfg,
+                                 n_solutions=n_solutions, feedback=feedback)
     lb = np.array([raw_b[v]["min"] for v in RAW_VARS])
     ub = np.array([raw_b[v]["max"] for v in RAW_VARS])
 
@@ -651,6 +755,49 @@ def call_llm_for_solutions(elite: list, raw_b: dict, der_b: dict, phys_b: dict,
     return [], parse_fails
 
 
+def collect_feasible_llm_solutions(
+    elite: list, raw_b: dict, der_b: dict, phys_b: dict,
+    cfg: HybridConfig, client, genai_types,
+    target_n: int = None, max_attempts: int = 4,
+) -> tuple:
+    """
+    Repeatedly call the LLM until exactly target_n Layer-2+3-feasible solutions
+    are collected (or max_attempts is reached).
+
+    Each call requests extra solutions to compensate for expected rejections:
+      - First call: ask for target_n * 2 (generous buffer)
+      - Subsequent calls: ask for only what is still needed
+
+    Returns (solutions[:target_n], total_llm_calls, total_parse_fails, total_infeasible).
+    """
+    target_n = target_n or cfg.llm_n_solutions
+    collected = []
+    total_parse_fails = 0
+    total_infeasible = 0
+    total_calls = 0
+
+    for attempt in range(max_attempts):
+        if len(collected) >= target_n:
+            break
+        needed = target_n - len(collected)
+        # First attempt: ask for 2× to get a good batch; subsequent: ask exactly needed
+        ask = min(needed * 2, 40) if attempt == 0 else needed
+        sols, n_fails = call_llm_for_solutions(
+            elite, raw_b, der_b, phys_b, cfg, client, genai_types, n_solutions=ask
+        )
+        total_calls += 1
+        total_parse_fails += n_fails
+        for x in sols:
+            if _is_feasible(x, der_b, phys_b):
+                collected.append(x)
+                if len(collected) >= target_n:
+                    break
+            else:
+                total_infeasible += 1
+
+    return collected[:target_n], total_calls, total_parse_fails, total_infeasible
+
+
 # ──────────────────────────────────────────────────────────────
 # MAIN HYBRID LOOP
 # ──────────────────────────────────────────────────────────────
@@ -691,7 +838,10 @@ def run_hybrid(raw_b: dict, der_b: dict, phys_b: dict,
     hv_history = []
     llm_calls = 0
     parse_fails = 0
-    llm_infeasible = 0   # LLM solutions parsed OK but failed Layer 2/3 checks
+    llm_infeasible = 0
+    _prev_feedback = None   # feedback dict passed to the next injection
+    llm_solution_log = []   # per-injection record of LLM solution quality
+    _last_n_inject = 0      # how many LLM solutions were injected last call
 
     label = cfg.name if not use_llm else f"{cfg.name} (F={cfg.llm_frequency}, N={cfg.llm_n_solutions})"
     print(f"\n{'='*62}")
@@ -711,7 +861,13 @@ def run_hybrid(raw_b: dict, der_b: dict, phys_b: dict,
 
         # ── LLM intervention ───────────────────────────────────
         note = ""
-        if use_llm and (gen + 1) % cfg.llm_frequency == 0:
+        _freq_ok = (cfg.llm_frequency > 0 and gen >= cfg.llm_start_gen
+                    and (gen + 1 - cfg.llm_start_gen) % cfg.llm_frequency == 0)
+        _stag_ok = True
+        if _freq_ok and cfg.stagnation_window > 0 and len(hv_history) >= cfg.stagnation_window:
+            recent_gain = hv_history[-1]["hv"] - hv_history[-cfg.stagnation_window]["hv"]
+            _stag_ok = recent_gain <= cfg.stagnation_threshold
+        if use_llm and _freq_ok and _stag_ok:
             # Collect elite: non-dominated feasible individuals, sorted by GWP
             front0_feasible = [i for i in fronts[0] if feas[i]]
             front0_feasible.sort(key=lambda i: obj[i, 0])
@@ -727,28 +883,100 @@ def run_hybrid(raw_b: dict, der_b: dict, phys_b: dict,
                         "28d_MPa": round(float(-obj[idx, 1]), 2),
                     })
 
+                # Build feedback from previous injection
+                curr_hv_val = _hv([{
+                    "GWP": float(obj[i, 0]), "28day": float(-obj[i, 1])
+                } for i in front0_feasible])
+                curr_gwps = [obj[i, 0] for i in front0_feasible]
+                curr_strs = [-obj[i, 1] for i in front0_feasible]
+                curr_feedback = {
+                    "curr_hv":      curr_hv_val,
+                    "curr_gwp_min": float(min(curr_gwps)) if curr_gwps else 0,
+                    "curr_gwp_max": float(max(curr_gwps)) if curr_gwps else 0,
+                    "curr_str_min": float(min(curr_strs)) if curr_strs else 0,
+                    "curr_str_max": float(max(curr_strs)) if curr_strs else 0,
+                    "curr_pareto_coords": [
+                        (round(float(obj[i, 0]), 1), round(float(-obj[i, 1]), 1))
+                        for i in front0_feasible
+                    ],
+                }
+                feedback_to_pass = None
+                if _prev_feedback is not None:
+                    feedback_to_pass = {
+                        "prev_hv":            _prev_feedback["curr_hv"],
+                        "prev_gwp_min":       _prev_feedback["curr_gwp_min"],
+                        "prev_gwp_max":       _prev_feedback["curr_gwp_max"],
+                        "prev_str_min":       _prev_feedback["curr_str_min"],
+                        "prev_str_max":       _prev_feedback["curr_str_max"],
+                        "prev_pareto_coords": _prev_feedback.get("curr_pareto_coords", []),
+                        **curr_feedback,
+                    }
+                _prev_feedback = curr_feedback
+
                 new_sols, n_fails = call_llm_for_solutions(
-                    elite, raw_b, der_b, phys_b, cfg, client, genai_types
+                    elite, raw_b, der_b, phys_b, cfg, client, genai_types,
+                    feedback=feedback_to_pass
                 )
                 llm_calls += 1
                 parse_fails += n_fails
 
-                # Pre-filter: only inject LLM solutions that pass Layer 2+3 checks.
-                # Infeasible solutions are discarded here rather than wasting offspring
-                # slots — the remaining slots stay as NSGA-II-generated offspring.
-                feasible_sols = [x for x in new_sols
-                                 if _is_feasible(x, der_b, phys_b)]
-                n_infeas_llm = len(new_sols) - len(feasible_sols)
+                # Inject LLM solutions into the offspring pool.
+                n_infeas_llm = sum(1 for x in new_sols if not _is_feasible(x, der_b, phys_b))
                 llm_infeasible += n_infeas_llm
-                n_inject = min(len(feasible_sols), cfg.llm_n_solutions)
-                for j in range(n_inject):
-                    offspring[-(j + 1)] = feasible_sols[j]
+                n_inject = min(len(new_sols), cfg.llm_n_solutions)
+                if cfg.llm_inject_mode == "augment":
+                    # Append LLM solutions — NSGA-II offspring are untouched.
+                    # Environmental selection then picks best from pop + offspring + LLM.
+                    if n_inject > 0:
+                        llm_arr = np.array([new_sols[j] for j in range(n_inject)])
+                        offspring = np.vstack([offspring, llm_arr])
+                else:
+                    # "replace": overwrite the N worst offspring (original behavior).
+                    for j in range(n_inject):
+                        offspring[-(j + 1)] = new_sols[j]
+                _last_n_inject = n_inject
                 note = f"+LLM×{n_inject}"
                 if n_infeas_llm:
-                    note += f"(dropped {n_infeas_llm} infeas)"
+                    note += f"({n_infeas_llm} infeas,kept)"
+            else:
+                _last_n_inject = 0
 
         # ── Evaluate offspring ─────────────────────────────────
         off_obj, off_feas = evaluate_population(offspring, raw_b, der_b, phys_b, meta, cfg.constraint_mode)
+
+        # ── Log LLM solution quality (before environmental selection) ──
+        if _last_n_inject > 0:
+            # LLM solutions occupy the last _last_n_inject slots of offspring
+            front0_f = [i for i in fast_nondominated_sort(obj, feas)[0] if feas[i]]
+            curr_front_pts = [(obj[i, 0], -obj[i, 1]) for i in front0_f]
+            for j in range(_last_n_inject):
+                llm_gwp = float(off_obj[-(j + 1), 0])
+                llm_str = float(-off_obj[-(j + 1), 1])
+                is_feas = bool(off_feas[-(j + 1)])
+                # Is this solution non-dominated by the current Pareto front?
+                dominated = any(
+                    fg <= llm_gwp and fs >= llm_str
+                    for fg, fs in curr_front_pts
+                ) if curr_front_pts else False
+                # Min Euclidean distance to current front (globally normalized)
+                _GWP_RNG = 534.5 - 169.0   # global normalization bounds
+                _STR_RNG = 106.1 - 17.4
+                if curr_front_pts:
+                    min_dist = min(
+                        (((llm_gwp - fg) / _GWP_RNG) ** 2 + ((llm_str - fs) / _STR_RNG) ** 2) ** 0.5
+                        for fg, fs in curr_front_pts
+                    )
+                else:
+                    min_dist = float("nan")
+                llm_solution_log.append({
+                    "gen": gen + 1,
+                    "llm_gwp": round(llm_gwp, 2),
+                    "llm_str": round(llm_str, 2),
+                    "is_feasible": int(is_feas),
+                    "is_dominated": int(dominated),
+                    "min_dist_to_front": round(min_dist, 4),
+                })
+            _last_n_inject = 0
 
         # ── Environmental selection (parent + offspring) ───────
         combined = np.vstack([pop, offspring])
@@ -798,6 +1026,7 @@ def run_hybrid(raw_b: dict, der_b: dict, phys_b: dict,
         "llm_calls": llm_calls,
         "parse_fails": parse_fails,
         "llm_infeasible": llm_infeasible,
+        "llm_solution_log": llm_solution_log,
     }
 
 
@@ -882,6 +1111,147 @@ def save_hybrid_results(result: dict, metrics: dict, cfg: HybridConfig,
     pd.DataFrame([metrics]).to_csv(
         os.path.join(cfg.output_prefix, "metrics.csv"), index=False)
 
+    if result.get("llm_solution_log"):
+        pd.DataFrame(result["llm_solution_log"]).to_csv(
+            os.path.join(cfg.output_prefix, "llm_solutions.csv"), index=False)
+
     print(f"\n  Saved -> {cfg.output_prefix}/")
     for k, v in metrics.items():
         print(f"    {k:<20}: {v}")
+
+
+# ──────────────────────────────────────────────────────────────
+# PURE-LLM OPTIMIZER  (Step 4.1 ablation)
+# ──────────────────────────────────────────────────────────────
+
+def run_pure_llm(raw_b: dict, der_b: dict, phys_b: dict,
+                 meta: dict, cfg: HybridConfig) -> dict:
+    """
+    Pure-LLM optimizer: no NSGA-II evolution.  The LLM is called every generation,
+    and its outputs are evaluated and added to a maintained Pareto archive.
+
+    Uses the same number of LLM calls as the hybrid (llm_frequency=1 by design
+    when called via the ablation runner).  Seed controls initial archive population.
+
+    Returns the same dict format as run_hybrid() for drop-in comparability.
+    """
+    if cfg.seed is not None:
+        np.random.seed(cfg.seed)
+
+    from google import genai
+    from google.genai import types as genai_types
+    client = genai.Client(api_key=cfg.gemini_api_key)
+
+    lb = np.array([raw_b[v]["min"] for v in RAW_VARS])
+    ub = np.array([raw_b[v]["max"] for v in RAW_VARS])
+
+    # Seed the archive with a random initial population (same as NSGA-II)
+    archive = np.column_stack([
+        np.random.uniform(raw_b[v]["min"], raw_b[v]["max"], cfg.pop_size)
+        for v in RAW_VARS
+    ])
+    arc_obj, arc_feas = evaluate_population(archive, raw_b, der_b, phys_b, meta, cfg.constraint_mode)
+
+    hv_history = []
+    llm_calls = 0
+    parse_fails = 0
+    llm_solution_log = []
+
+    print(f"\n{'='*62}")
+    print(f"  {cfg.name}  [PURE-LLM MODE]")
+    print(f"  Pop={cfg.pop_size} | Gen={cfg.max_generations} | LLM calls=every gen")
+    print(f"{'='*62}")
+
+    for gen in range(cfg.max_generations):
+        # Get current Pareto front from archive
+        fronts = fast_nondominated_sort(arc_obj, arc_feas)
+        front0 = [i for i in fronts[0] if arc_feas[i]]
+        front0.sort(key=lambda i: arc_obj[i, 0])
+        elite_idx = front0[:cfg.llm_n_elite]
+
+        elite = []
+        for idx in elite_idx:
+            mix = _to_dict(archive[idx])
+            elite.append({
+                "mix": {v: round(float(mix[v]), 1) for v in RAW_VARS},
+                "GWP": round(float(arc_obj[idx, 0]), 2),
+                "28d_MPa": round(float(-arc_obj[idx, 1]), 2),
+            })
+
+        # Build feedback
+        curr_hv_val = _hv([{"GWP": float(arc_obj[i,0]), "28day": float(-arc_obj[i,1])} for i in front0])
+        curr_coords  = [(round(float(arc_obj[i,0]),1), round(float(-arc_obj[i,1]),1)) for i in front0]
+
+        feedback = {
+            "prev_hv":            curr_hv_val,
+            "curr_hv":            curr_hv_val,
+            "prev_pareto_coords": curr_coords,
+            "curr_pareto_coords": curr_coords,
+        }
+
+        new_sols, n_fails = call_llm_for_solutions(
+            elite, raw_b, der_b, phys_b, cfg, client, genai_types,
+            feedback=feedback
+        )
+        llm_calls += 1
+        parse_fails += n_fails
+
+        if new_sols:
+            # Evaluate new solutions and add to archive
+            new_arr = np.array(new_sols)
+            new_obj, new_feas = evaluate_population(new_arr, raw_b, der_b, phys_b, meta, cfg.constraint_mode)
+
+            # Log LLM solution quality
+            front_pts = [(arc_obj[i,0], -arc_obj[i,1]) for i in front0]
+            gwp_rng = max((p[0] for p in front_pts), default=1) - min((p[0] for p in front_pts), default=0) + 1e-6
+            str_rng = max((p[1] for p in front_pts), default=1) - min((p[1] for p in front_pts), default=0) + 1e-6
+            for j in range(len(new_sols)):
+                lg, ls = float(new_obj[j,0]), float(-new_obj[j,1])
+                dominated = any(fp<=lg and fs>=ls for fp,fs in front_pts)
+                min_dist = min((((lg-fp)/gwp_rng)**2+((ls-fs)/str_rng)**2)**0.5 for fp,fs in front_pts) if front_pts else float("nan")
+                llm_solution_log.append({
+                    "gen": gen+1, "llm_gwp": round(lg,2), "llm_str": round(ls,2),
+                    "is_feasible": int(new_feas[j]), "is_dominated": int(dominated),
+                    "min_dist_to_front": round(min_dist,4),
+                })
+
+            # Merge into archive and trim to pop_size by Pareto ranking + crowding
+            combined  = np.vstack([archive, new_arr])
+            comb_obj  = np.vstack([arc_obj, new_obj])
+            comb_feas = np.concatenate([arc_feas, new_feas])
+            archive, arc_obj, arc_feas, _, _ = environmental_selection(
+                combined, comb_obj, comb_feas, cfg.pop_size
+            )
+
+        # HV tracking
+        fronts2   = fast_nondominated_sort(arc_obj, arc_feas)
+        pareto_hv = [{"GWP": float(arc_obj[i,0]), "28day": float(-arc_obj[i,1])} for i in fronts2[0] if arc_feas[i]]
+        hv  = _hv(pareto_hv)
+        hv_history.append({"gen": gen+1, "hv": hv, "n_pareto": len(pareto_hv), "llm_injected": 1})
+
+        if (gen+1) % 10 == 0 or gen == 0:
+            print(f"  {gen+1:4d}  {hv:10.4f}  {len(pareto_hv):7d}")
+
+    # Final Pareto
+    fronts_f = fast_nondominated_sort(arc_obj, arc_feas)
+    final_pareto = []
+    for i in fronts_f[0]:
+        if arc_feas[i]:
+            mix = _to_dict(archive[i])
+            final_pareto.append({
+                **{v: round(float(mix[v]),3) for v in RAW_VARS},
+                "GWP": round(float(arc_obj[i,0]),3),
+                "28day": round(float(-arc_obj[i,1]),3),
+            })
+    hv_final = _hv(final_pareto)
+    print(f"\n  LLM calls: {llm_calls}  Parse fails: {parse_fails}")
+    print(f"  Final Pareto: {len(final_pareto)} solutions  HV: {hv_final:.4f}")
+
+    return {
+        "final_pareto": final_pareto,
+        "hv_history": hv_history,
+        "llm_calls": llm_calls,
+        "parse_fails": parse_fails,
+        "llm_infeasible": 0,
+        "llm_solution_log": llm_solution_log,
+    }

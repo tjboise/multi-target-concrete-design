@@ -17,6 +17,7 @@ Simultaneously minimizes GWP (kg CO₂e/m³) and maximizes 28-day compressive st
    - [Step 1 — Statistical Significance](#step-1--statistical-significance)
    - [Step 2 — LLM Solution Quality](#step-2--llm-solution-quality)
    - [Step 3 — Pareto Front Diversity](#step-3--pareto-front-diversity)
+   - [Step 4 — Ablation Study](#step-4--ablation-study)
 4. [Evaluation Metrics](#evaluation-metrics)
 5. [Repository Structure](#repository-structure)
 6. [Setup and Usage](#setup-and-usage)
@@ -274,6 +275,49 @@ LLM injection not only improves the hypervolume but also spreads the Pareto fron
 
 ---
 
+### Step 4 — Ablation Study
+
+Two ablation experiments isolate *what* drives the hybrid's HV gain. Both use the same every-generation augment setup as the main study (n = 30 paired replicates, seed = rep).
+
+![Step 4 ablation — method comparison and leave-one-out prompt ablation](results/figures/step4_ablation.png)
+
+#### Step 4.1 — Method Comparison
+
+Four methods are compared. Pure-LLM uses LLM-only generation (no NSGA-II evolution). Hybrid Replace overwrites the N worst offspring before selection; Hybrid Augment appends LLM solutions to the offspring pool.
+
+| Method | Mean HV | ΔHV vs NSGA-II | % Positive | p (Wilcoxon) |
+|:--|:--:|:--:|:--:|:--:|
+| NSGA-II (baseline) | 0.780 | — | — | — |
+| Pure LLM | 0.569 | −0.211 | 0% | 1.000 (ns) |
+| Hybrid Replace | 0.817 | +0.037 | 66% | 0.006 (**) |
+| **Hybrid Augment** | **0.826** | **+0.046** | **76%** | **0.001 (**)** |
+
+Letting NSGA-II's selection pressure operate over the enlarged pool (Augment) outperforms both Replace and Pure-LLM. Pure-LLM without evolutionary selection diverges severely, confirming that NSGA-II's tournament selection is load-bearing.
+
+#### Step 4.2 — Leave-One-Out Prompt Ablation
+
+The full prompt contains five sections (Objectives, Knowledge Table, Constraints, Elite solutions, Task/gap targeting). Each variant removes exactly one section; all other settings are identical to the full Hybrid Augment.
+
+| Prompt condition | Mean ΔHV | p (Wilcoxon) | Contribution* |
+|:--|:--:|:--:|:--:|
+| Full prompt | +0.0464 | 0.001 (**) | — |
+| − Constraints | +0.0449 | <0.001 (***) | 0.0015 |
+| − Objectives | +0.0390 | 0.009 (**) | 0.0074 |
+| − Elite solutions | +0.0360 | 0.014 (*) | 0.0104 |
+| − Knowledge table | +0.0318 | 0.032 (*) | 0.0146 |
+| − Task / gap targeting | +0.0311 | 0.076 (ns) | 0.0153 |
+| Baseline NSGA-II | 0.000 | — | — |
+
+\* Contribution = mean ΔHV(full) − mean ΔHV(ablated): how much HV gain is lost by removing that section.
+
+**Key findings:**
+- **Task/gap targeting** and **Knowledge Table** each contribute ~0.015 — removing either reduces the gain by one third and erases statistical significance for the task section.
+- **Constraints section** contributes almost nothing (+0.002): the LLM already encodes physical plausibility from material knowledge, making the explicit constraint block largely redundant.
+- **Elite solutions** and **Objectives** provide moderate contributions (+0.010 and +0.007).
+- Removing Task/gap targeting is the *only* condition where the hybrid's improvement becomes non-significant (p = 0.076), making it the most critical prompt component.
+
+---
+
 ## Evaluation Metrics
 
 ### HV — Hypervolume
@@ -310,10 +354,15 @@ Average pairwise Euclidean distance between all Pareto front solutions in normal
 │   │   ├── convergence_everyg.png
 │   │   ├── delta_hv_incremental_everyg.png
 │   │   ├── step2_area.png
-│   │   └── step3_paired.png
+│   │   ├── step3_paired.png
+│   │   └── step4_ablation.png
 │   ├── grid_everyg_hyb_rep{01-30}/   # Hybrid runs (pareto_front.csv, hv_history.csv, metrics.csv, llm_solutions.csv)
 │   ├── grid_everyg_base_rep{01-30}/  # Baseline NSGA-II runs
-│   └── grid_everyg_analysis.csv      # Per-replicate summary
+│   ├── abl41_purellm_rep{01-30}/     # Step 4.1: pure-LLM runs
+│   ├── abl41_replace_rep{01-30}/     # Step 4.1: hybrid replace runs
+│   ├── abl42_no_{obj,kt,con,elite,task}_rep{01-30}/  # Step 4.2: LOO ablation runs
+│   ├── grid_everyg_analysis.csv      # Per-replicate summary (Steps 1–3)
+│   └── ablation_42_loo_final.csv     # Step 4.2 LOO ablation summary
 └── README.md
 ```
 
