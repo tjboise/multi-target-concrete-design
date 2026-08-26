@@ -18,6 +18,8 @@ Simultaneously minimizes GWP (kg CO₂e/m³) and maximizes 28-day compressive st
    - [Step 2 — LLM Solution Quality](#step-2--llm-solution-quality)
    - [Step 3 — Pareto Front Diversity](#step-3--pareto-front-diversity)
    - [Step 4 — Ablation Study](#step-4--ablation-study)
+     - [Step 4.1 — Method Comparison](#step-41--method-comparison)
+     - [Step 4.2 — Leave-One-Out Prompt Ablation](#step-42--leave-one-out-prompt-ablation)
 4. [Evaluation Metrics](#evaluation-metrics)
 5. [Repository Structure](#repository-structure)
 6. [Setup and Usage](#setup-and-usage)
@@ -220,6 +222,22 @@ Mean HV ± 1 SD across 30 paired replicates. The hybrid maintains a positive lea
 
 Change in mean ΔHV from one generation to the next. **Red bars**: LLM contributed above-average useful solutions at that generation (frac_useful > 13.8%); **green bars**: below-average. Red bars cluster in early generations when the Pareto front is sparse and easy to extend.
 
+#### N-sweep: selecting N=15
+
+N=15 was determined by a sweep of LLM solutions per generation (N = 5, 10, 15, 20, 25), each with 30 paired replicates. The table below shows ΔHV = HV(hybrid) − HV(baseline) for each N.
+
+| N | Mean ΔHV vs baseline | SD | p (Wilcoxon, one-sided) | % reps improved |
+|:--:|:--:|:--:|:--:|:--:|
+| 5  | +0.046 | 0.079 | 0.001 (**) | 76% |
+| 10 | +0.049 | 0.083 | 0.004 (**) | 70% |
+| **15** | **+0.082** | 0.089 | **<0.001 (***)** | **83%** |
+| 20 | +0.034 | 0.108 | 0.029 (*) | 66% |
+| 25 | +0.062 | 0.095 | 0.001 (***) | 70% |
+
+![N-sweep: HV convergence and ΔHV distribution for N=5–25](results/figures/nsweep_final.png)
+
+N=15 achieves the highest ΔHV (+0.082) and the highest fraction of improved replicates (83%). N=20 shows a notable drop despite a lower infeasibility rate (37% vs 46% at N=15): the larger batch floods the offspring pool with feasible-but-dominated solutions that displace genetic offspring in NSGA-II's crowding-distance selection. N=25 partially recovers but at higher variance. **N=15 was adopted as the main experiment configuration.**
+
 ---
 
 ### Step 2 — LLM Solution Quality
@@ -277,44 +295,70 @@ LLM injection not only improves the hypervolume but also spreads the Pareto fron
 
 ### Step 4 — Ablation Study
 
-Two ablation experiments isolate *what* drives the hybrid's HV gain. Both use the same every-generation augment setup as the main study (n = 30 paired replicates, seed = rep).
-
-![Step 4 ablation — method comparison and leave-one-out prompt ablation](results/figures/step4_ablation.png)
+Two ablation experiments isolate *what* drives the hybrid's HV gain.
 
 #### Step 4.1 — Method Comparison
 
-Four methods are compared. Pure-LLM uses LLM-only generation (no NSGA-II evolution). Hybrid Replace overwrites the N worst offspring before selection; Hybrid Augment appends LLM solutions to the offspring pool.
+Four methods are compared at N=15 (30 paired replicates, every-gen augment, seed=rep):
+- **NSGA-II** — pure evolutionary baseline, no LLM
+- **Pure LLM** — LLM-only generation at each generation, no NSGA-II evolution
+- **Hybrid Replace** — LLM solutions overwrite N offspring before NSGA-II selection
+- **Hybrid Augment** — LLM solutions appended to the offspring pool; NSGA-II selection decides their fate
 
 | Method | N | Mean HV | ΔHV vs NSGA-II | % Positive | p (Wilcoxon) |
 |:--|:--:|:--:|:--:|:--:|:--:|
 | NSGA-II (baseline) | — | 0.780 | — | — | — |
-| Pure LLM | 5 | 0.569 | −0.211 | 0% | 1.000 (ns) |
-| Hybrid Replace | 5 | 0.817 | +0.037 | 66% | 0.006 (**) |
+| Pure LLM | 15 | — | — | — | *pending* |
+| Hybrid Replace | 15 | — | — | — | *pending* |
 | **Hybrid Augment** | **15** | **0.862** | **+0.082** | **83%** | **<0.001 (***)** |
 
-Letting NSGA-II's selection pressure operate over the enlarged pool (Augment) outperforms both Replace and Pure-LLM. Pure-LLM without evolutionary selection diverges severely, confirming that NSGA-II's tournament selection is load-bearing. N=15 is the optimal injection count identified by N-sweep (see below).
+*Pure LLM and Hybrid Replace N=15 re-runs in progress.*
+
+Letting NSGA-II's selection pressure operate over the enlarged pool (Augment) outperforms Replace and Pure-LLM at N=5 (historical baseline: Pure LLM ΔHV = −0.211, Replace ΔHV = +0.037). Pure-LLM without evolutionary selection diverges severely, confirming that NSGA-II's tournament selection is load-bearing.
 
 #### Step 4.2 — Leave-One-Out Prompt Ablation
 
-The full prompt contains five sections (Objectives, Knowledge Table, Constraints, Elite solutions, Task/gap targeting). Each variant removes exactly one section; all other settings are identical to the full Hybrid Augment. This ablation was conducted at N=5 to isolate prompt component effects from injection-count effects.
+The full prompt has five sections (Objectives, Knowledge Table, Constraints, Elite solutions, Task/gap targeting). Each variant removes exactly one section at N=5 (30 paired replicates) to isolate prompt component effects from injection-count effects.
 
-| Prompt condition | Mean ΔHV | p (Wilcoxon) | Contribution* |
-|:--|:--:|:--:|:--:|
-| Full prompt | +0.0464 | 0.001 (**) | — |
-| − Constraints | +0.0449 | <0.001 (***) | 0.0015 |
-| − Objectives | +0.0390 | 0.009 (**) | 0.0074 |
-| − Elite solutions | +0.0360 | 0.014 (*) | 0.0104 |
-| − Knowledge table | +0.0318 | 0.032 (*) | 0.0146 |
-| − Task / gap targeting | +0.0311 | 0.076 (ns) | 0.0153 |
-| Baseline NSGA-II | 0.000 | — | — |
+| Prompt condition | Mean HV | Mean ΔHV | p (Wilcoxon) | ΔHV loss* |
+|:--|:--:|:--:|:--:|:--:|
+| NSGA-II baseline | 0.780 | 0.000 | — | — |
+| Full prompt | 0.826 | +0.046 | 0.002 (**) | — |
+| w/o Objectives | 0.819 | +0.039 | 0.019 (*) | 0.007 |
+| w/o Knowledge Table | 0.812 | +0.032 | 0.064 (ns) | 0.014 |
+| w/o Constraints | 0.825 | +0.045 | 0.001 (***) | 0.001 |
+| w/o Elite solutions | 0.816 | +0.036 | 0.028 (*) | 0.010 |
+| w/o Task/Gap | 0.811 | +0.031 | 0.152 (ns) | 0.015 |
 
-\* Contribution = mean ΔHV(full) − mean ΔHV(ablated): how much HV gain is lost by removing that section.
+\* ΔHV loss = Mean ΔHV(full) − Mean ΔHV(ablated): how much HV gain is lost by removing that section.
 
-**Key findings:**
-- **Task/gap targeting** and **Knowledge Table** each contribute ~0.015 — removing either reduces the gain by one third and erases statistical significance for the task section.
-- **Constraints section** contributes almost nothing (+0.002): the LLM already encodes physical plausibility from material knowledge, making the explicit constraint block largely redundant.
-- **Elite solutions** and **Objectives** provide moderate contributions (+0.010 and +0.007).
-- Removing Task/gap targeting is the *only* condition where the hybrid's improvement becomes non-significant (p = 0.076), making it the most critical prompt component.
+**Knowledge Table effect on material composition:**
+
+The Knowledge Table encodes GWP emission factors, strength mechanisms, and a two-path optimization strategy (high-slag for low GWP; low w/b + WR_HR for high strength). Removing it shifts the LLM toward less optimal binder strategies.
+
+![Material composition: full prompt vs w/o KT](results/figures/step42_composition.png)
+
+| Mix property | Full prompt | w/o KT | Δ | p |
+|:--|:--:|:--:|:--:|:--:|
+| Slag cement (SC) binder fraction | 58.8% | 53.0% | −5.8 pp | <0.001 (***) |
+| Fly ash (FA) binder fraction | 11.7% | 16.4% | +4.7 pp | 0.001 (**) |
+| Portland cement (PC) fraction | 29.5% | 30.6% | +1.1 pp | <0.001 (***) |
+| w/b ratio | 0.334 | 0.355 | +0.021 | 0.003 (**) |
+
+Without the Knowledge Table, the LLM uses less slag cement (the best low-GWP/high-strength substitute for PC) and higher w/b ratios. This demonstrates that KT provides actionable domain knowledge that the LLM cannot reliably infer from objectives and constraints alone.
+
+**Elite solutions effect on LLM proposal quality:**
+
+Elite solutions serve as few-shot examples showing the LLM what a non-dominated mix looks like. Without them, the LLM operates in zero-shot mode.
+
+![Elite effect: frac_useful and diversity](results/figures/step42_elite_effect.png)
+
+| Metric | Full prompt | w/o Elite | Δ | p |
+|:--|:--:|:--:|:--:|:--:|
+| Fraction of useful LLM proposals (feasible + non-dominated) | 13.8% | 0.59% | −13.2 pp | <0.001 (***) |
+| Pareto front diversity | 0.198 | 0.203 | +0.005 | 0.299 (ns) |
+
+Removing Elite solutions reduces useful LLM proposals by 95%: the LLM proposes solutions that are rarely competitive with the current Pareto front. Despite higher (but insignificant) diversity, the w/o Elite condition achieves lower ΔHV because solutions land far from the frontier — breadth without quality does not improve hypervolume.
 
 ---
 
@@ -345,8 +389,12 @@ Average pairwise Euclidean distance between all Pareto front solutions in normal
 ├── optimizer_core_mt.py          # Core NSGA-II optimizer (constraints, bounds, physics)
 ├── optimizer_hybrid_mt.py        # LLM-augmented NSGA-II hybrid
 ├── run_grid_late_mt.py           # Runner for grid_everyg experiments
-├── run_ablation_mt.py            # Ablation study runner (4.1: NSGA vs LLM vs hybrid; 4.2: prompt variants)
-├── analyze_grid_gap.py           # Steps 1–3 analysis (significance, LLM quality, diversity)
+├── run_nsweep_mt.py              # N-sweep runner (N=5,10,15,20,25, 30 reps each)
+├── run_ablation_mt.py            # Step 4.2 LOO prompt ablation runner
+├── run_abl41_n15.py              # Step 4.1 method comparison runner at N=15
+├── regen_figures_n15.py          # Regenerate Steps 1–3 figures from N=15 data
+├── analyze_nsweep_final.py       # N-sweep analysis figure (Step 1 N-sweep)
+├── analyze_step42.py             # Step 4.2 composition + elite effect figures
 ├── Concrete_Data_SI_clean.csv    # Dataset (756 mixes filtered by Vfinal, kg/m³)
 ├── results/
 │   ├── figures/                  # Figures for README
@@ -355,14 +403,15 @@ Average pairwise Euclidean distance between all Pareto front solutions in normal
 │   │   ├── delta_hv_incremental_everyg.png
 │   │   ├── step2_area.png
 │   │   ├── step3_paired.png
-│   │   └── step4_ablation.png
-│   ├── grid_everyg_hyb_rep{01-30}/   # Hybrid runs (pareto_front.csv, hv_history.csv, metrics.csv, llm_solutions.csv)
-│   ├── grid_everyg_base_rep{01-30}/  # Baseline NSGA-II runs
-│   ├── abl41_purellm_rep{01-30}/     # Step 4.1: pure-LLM runs
-│   ├── abl41_replace_rep{01-30}/     # Step 4.1: hybrid replace runs
-│   ├── abl42_no_{obj,kt,con,elite,task}_rep{01-30}/  # Step 4.2: LOO ablation runs
-│   ├── grid_everyg_analysis.csv      # Per-replicate summary (Steps 1–3)
-│   └── ablation_42_loo_final.csv     # Step 4.2 LOO ablation summary
+│   │   ├── nsweep_final.png          # N-sweep ΔHV comparison (Step 1)
+│   │   ├── step42_composition.png    # Material composition: full vs w/o KT
+│   │   └── step42_elite_effect.png   # frac_useful + diversity: full vs w/o Elite
+│   ├── nsweep_n{05,10,15,20,25}_rep{01-30}/  # N-sweep hybrid runs
+│   ├── grid_everyg_hyb_rep{01-30}/   # N=5 hybrid runs (reused as N=5 in N-sweep)
+│   ├── grid_everyg_base_rep{01-30}/  # Baseline NSGA-II runs (shared across experiments)
+│   ├── abl41_purellm_n15_rep{01-30}/ # Step 4.1: pure-LLM N=15 runs
+│   ├── abl41_replace_n15_rep{01-30}/ # Step 4.1: hybrid replace N=15 runs
+│   └── abl42_no_{obj,kt,con,elite,task}_rep{01-30}/  # Step 4.2: LOO ablation runs
 └── README.md
 ```
 
