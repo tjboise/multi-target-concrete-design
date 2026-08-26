@@ -85,14 +85,22 @@ bin_centers = (GWP_BINS[:-1] + GWP_BINS[1:]) / 2
 base_pfs = [r["bpf"] for r in reps_data]
 hyb_pfs  = [r["hpf"] for r in reps_data]
 
-for pf_list, color, label in [
-    (base_pfs, "#6B7280", f"NSGA-II baseline (n={REPS})"),
-    (hyb_pfs,  "#1D4ED8", f"Hybrid N=15 (n={REPS})"),
+mats = {}
+for key, pf_list in [("base", base_pfs), ("hyb", hyb_pfs)]:
+    mats[key] = rep_binned(pf_list, GWP_BINS)
+
+# shared x-range: bins where BOTH have data
+shared_mask = (~np.isnan(np.nanmean(mats["base"], axis=0))) & \
+              (~np.isnan(np.nanmean(mats["hyb"],  axis=0)))
+
+for key, color, label in [
+    ("base", "#6B7280", f"NSGA-II baseline (n={REPS})"),
+    ("hyb",  "#1D4ED8", f"Hybrid N=15 (n={REPS})"),
 ]:
-    mat  = rep_binned(pf_list, GWP_BINS)
+    mat  = mats[key]
     mean = np.nanmean(mat, axis=0)
     sd   = np.nanstd(mat,  axis=0)
-    mask = ~np.isnan(mean)
+    mask = shared_mask
     ax.plot(bin_centers[mask], mean[mask], color=color, lw=2.2, label=label, zorder=3)
     ax.fill_between(bin_centers[mask],
                     mean[mask] - sd[mask],
