@@ -119,35 +119,37 @@ print(df_table.to_string(index=False))
 print(f"Saved step42_dhv_table.csv\n")
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 2. Material composition: full vs w/o KT
+# 2. Material composition: all conditions
 # ══════════════════════════════════════════════════════════════════════════════
-MIX_VARS   = ["PC", "FA", "SC", "FAGG", "CAGG", "WATER"]
-MIX_LABELS = {
-    "PC":    "Portland Cement",
-    "FA":    "Fly Ash",
-    "SC":    "Slag Cement",
-    "FAGG":  "Fine Aggregate",
-    "CAGG":  "Coarse Aggregate",
-    "WATER": "Water",
+
+COMP_CONDITIONS = {
+    "NSGA-II":         CONDITIONS["base"],
+    "Full prompt":     CONDITIONS["full"],
+    "w/o Objectives":  CONDITIONS["no_obj"],
+    "w/o KT":          CONDITIONS["no_kt"],
+    "w/o Constraints": CONDITIONS["no_con"],
+    "w/o Elite":       CONDITIONS["no_elite"],
+    "w/o Task/Gap":    CONDITIONS["no_task"],
+}
+COMP_COLORS = {
+    "NSGA-II":         "#9CA3AF",
+    "Full prompt":     "#1D4ED8",
+    "w/o Objectives":  "#60A5FA",
+    "w/o KT":          "#F59E0B",
+    "w/o Constraints": "#34D399",
+    "w/o Elite":       "#A78BFA",
+    "w/o Task/Gap":    "#EF4444",
 }
 
-pfs_full  = load_pareto_fronts(CONDITIONS["full"])
-pfs_nokt  = load_pareto_fronts(CONDITIONS["no_kt"])
-
-def binder_stats(pf_list, var):
-    """Mean proportion of <var> in binder (PC+FA+SC) per rep, then across reps."""
+def binder_frac(pf_list, var):
     vals = []
     for pf in pf_list:
         binder = pf["PC"] + pf["FA"] + pf["SC"]
-        if var in ["PC", "FA", "SC"]:
-            prop = (pf[var] / binder.replace(0, np.nan)).dropna()
-        else:
-            prop = pf[var]
+        prop = (pf[var] / binder.replace(0, np.nan)).dropna()
         if len(prop):
             vals.append(prop.mean())
     return np.array(vals)
 
-# Also compute w/b ratio
 def wb_ratio(pf_list):
     vals = []
     for pf in pf_list:
@@ -157,60 +159,86 @@ def wb_ratio(pf_list):
             vals.append(wb.mean())
     return np.array(vals)
 
-print("Material composition comparison (full vs w/o KT):")
-results_comp = {}
-for var in ["SC", "FA", "PC"]:
-    full_v = binder_stats(pfs_full, var)
-    nokt_v = binder_stats(pfs_nokt, var)
-    n = min(len(full_v), len(nokt_v))
-    t, p = stats.ttest_rel(full_v[:n], nokt_v[:n])
-    results_comp[var] = (full_v, nokt_v, p)
-    print(f"  {var} binder frac: full={full_v.mean():.3f}  no_kt={nokt_v.mean():.3f}  p={p:.4f}")
+comp_data = {}
+for name, tpl in COMP_CONDITIONS.items():
+    pfs = load_pareto_fronts(tpl)
+    comp_data[name] = {
+        "SC": binder_frac(pfs, "SC"),
+        "FA": binder_frac(pfs, "FA"),
+        "PC": binder_frac(pfs, "PC"),
+        "wb": wb_ratio(pfs),
+    }
 
-wb_full = wb_ratio(pfs_full)
-wb_nokt = wb_ratio(pfs_nokt)
-n = min(len(wb_full), len(wb_nokt))
-t_wb, p_wb = stats.ttest_rel(wb_full[:n], wb_nokt[:n])
-print(f"  w/b ratio:      full={wb_full.mean():.3f}  no_kt={wb_nokt.mean():.3f}  p={p_wb:.4f}")
+ref = comp_data["Full prompt"]
+
+print("Material composition (all conditions):")
+def sig(p): return "***" if p < 0.001 else ("**" if p < 0.01 else ("*" if p < 0.05 else "ns"))
+for name, d in comp_data.items():
+    sc = d["SC"].mean()*100; fa = d["FA"].mean()*100
+    pc = d["PC"].mean()*100; wb = d["wb"].mean()
+    if name in ("Full prompt", "NSGA-II"):
+        print(f"  {name:<22}: SC={sc:.1f}%  FA={fa:.1f}%  PC={pc:.1f}%  w/b={wb:.3f}")
+    else:
+        n = min(len(d["SC"]), len(ref["SC"]))
+        _, p_sc = stats.ttest_rel(d["SC"][:n], ref["SC"][:n])
+        _, p_fa = stats.ttest_rel(d["FA"][:n], ref["FA"][:n])
+        _, p_pc = stats.ttest_rel(d["PC"][:n], ref["PC"][:n])
+        _, p_wb = stats.ttest_rel(d["wb"][:n], ref["wb"][:n])
+        print(f"  {name:<22}: SC={sc:.1f}%({sig(p_sc)})  FA={fa:.1f}%({sig(p_fa)})  PC={pc:.1f}%({sig(p_pc)})  w/b={wb:.3f}({sig(p_wb)})")
 print()
 
-fig, axes = plt.subplots(1, 4, figsize=(14, 5.5))
-plot_vars = [("SC", "Slag Cement\nfraction"), ("FA", "Fly Ash\nfraction"),
-             ("PC", "Portland Cement\nfraction"), ("wb", "w/b ratio")]
+# grouped bar chart: 4 properties × 7 conditions
+prop_keys   = ["SC", "FA", "PC", "wb"]
+prop_labels = ["Slag cement\nbinder fraction", "Fly ash\nbinder fraction",
+               "Portland cement\nbinder fraction", "w/b ratio"]
+prop_scale  = [100, 100, 100, 1]   # SC/FA/PC as %, wb as raw
 
-for ax, (var, ylabel) in zip(axes, plot_vars):
-    if var == "wb":
-        d_full, d_nokt = wb_full, wb_nokt
-        p_val = p_wb
-    else:
-        d_full, d_nokt, p_val = results_comp[var]
+cond_names = list(COMP_CONDITIONS.keys())
+x = np.arange(len(cond_names))
+width = 0.6
 
-    bp = ax.boxplot([d_full, d_nokt], patch_artist=True,
-                    medianprops=dict(color="white", lw=2.2),
-                    flierprops=dict(marker=".", ms=4, alpha=0.4),
-                    whiskerprops=dict(lw=1.3), capprops=dict(lw=1.3))
-    colors = ["#1D4ED8", "#F59E0B"]
-    for patch, c in zip(bp["boxes"], colors):
-        patch.set_facecolor(c); patch.set_alpha(0.78); patch.set_edgecolor(c)
-    for wh, c in zip(bp["whiskers"], [c for c in colors for _ in range(2)]):
-        wh.set_color(c)
-    for cap, c in zip(bp["caps"], [c for c in colors for _ in range(2)]):
-        cap.set_color(c)
+fig, axes = plt.subplots(1, 4, figsize=(16, 5.5), sharey=False)
+rng = np.random.default_rng(42)
 
-    rng = np.random.default_rng(42)
-    for i, (arr, c) in enumerate(zip([d_full, d_nokt], colors)):
-        ax.scatter(i+1+rng.uniform(-0.12, 0.12, len(arr)), arr,
-                   s=16, color=c, alpha=0.50, zorder=3)
+for ax, prop, ylabel, scale in zip(axes, prop_keys, prop_labels, prop_scale):
+    ref_val = comp_data["Full prompt"][prop].mean() * scale
+    ax.axhline(ref_val, color="#1D4ED8", lw=1.2, ls="--", alpha=0.5, zorder=1)
 
-    sig_str = "***" if p_val < 0.001 else ("**" if p_val < 0.01 else ("*" if p_val < 0.05 else "ns"))
-    ax.set_xticks([1, 2])
-    ax.set_xticklabels(["Full\nprompt", "w/o KT"], fontsize=9)
+    for i, name in enumerate(cond_names):
+        d   = comp_data[name][prop]
+        col = COMP_COLORS[name]
+        mean_v = d.mean() * scale
+
+        bp = ax.boxplot([d * scale], positions=[i], widths=0.55, patch_artist=True,
+                        medianprops=dict(color="white", lw=2.0),
+                        flierprops=dict(marker=".", ms=3, alpha=0.3),
+                        whiskerprops=dict(lw=1.1), capprops=dict(lw=1.1))
+        bp["boxes"][0].set_facecolor(col); bp["boxes"][0].set_alpha(0.75)
+        bp["boxes"][0].set_edgecolor(col)
+        bp["whiskers"][0].set_color(col); bp["whiskers"][1].set_color(col)
+        bp["caps"][0].set_color(col);     bp["caps"][1].set_color(col)
+
+        jitter = rng.uniform(-0.15, 0.15, len(d))
+        ax.scatter(i + jitter, d * scale, s=12, color=col, alpha=0.45, zorder=3)
+
+        # significance marker vs Full prompt
+        if name not in ("Full prompt", "NSGA-II"):
+            n  = min(len(d), len(ref[prop]))
+            _, p = stats.ttest_rel(d[:n], ref[prop][:n])
+            s  = sig(p)
+            if s != "ns":
+                ypos = (d * scale).max() + (scale * 0.005 if scale == 1 else 0.3)
+                ax.text(i, ypos, s, ha="center", va="bottom", fontsize=7.5,
+                        color=col, fontweight="bold")
+
+    ax.set_xticks(x)
+    ax.set_xticklabels([n.replace(" ", "\n") for n in cond_names], fontsize=7)
     ax.set_ylabel(ylabel, fontsize=9)
-    ax.set_title(f"{sig_str} (p={p_val:.3f})", fontsize=9)
     ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False)
 
-fig.suptitle("Material Composition: Full Prompt vs w/o Knowledge Table\n"
-             "(Pareto front solutions, n=30 reps; paired t-test)", fontsize=11, fontweight="bold")
+fig.suptitle("Pareto Front Material Composition: All Ablation Conditions\n"
+             "(mean per-rep; dashed line = Full prompt mean; markers = significance vs Full prompt)",
+             fontsize=11, fontweight="bold")
 plt.tight_layout()
 plt.savefig(OUTDIR / "step42_composition.png", dpi=150, bbox_inches="tight")
 plt.close()
@@ -222,12 +250,13 @@ print("Saved step42_composition.png")
 fu_full   = load_frac_useful(CONDITIONS["full"])
 fu_noelite = load_frac_useful(CONDITIONS["no_elite"])
 
-div_base_arr   = np.array([pairwise_div(pd.read_csv(BASE / CONDITIONS["base"].format(r) / "pareto_front.csv"))
-                            for r in range(1, REPS+1)
-                            if (BASE / CONDITIONS["base"].format(r) / "pareto_front.csv").exists()])
-div_full_arr   = np.array([pairwise_div(pf) for pf in pfs_full])
-div_noelite_arr = np.array([pairwise_div(pf)
-                             for pf in load_pareto_fronts(CONDITIONS["no_elite"])])
+pfs_base_   = load_pareto_fronts(CONDITIONS["base"])
+pfs_full_   = load_pareto_fronts(CONDITIONS["full"])
+pfs_noelite_= load_pareto_fronts(CONDITIONS["no_elite"])
+
+div_base_arr    = np.array([pairwise_div(pf) for pf in pfs_base_])
+div_full_arr    = np.array([pairwise_div(pf) for pf in pfs_full_])
+div_noelite_arr = np.array([pairwise_div(pf) for pf in pfs_noelite_])
 
 print("Elite effect:")
 n_fu = min(len(fu_full), len(fu_noelite))

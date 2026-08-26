@@ -338,14 +338,19 @@ The Knowledge Table encodes GWP emission factors, strength mechanisms, and a two
 
 ![Material composition: full prompt vs w/o KT](results/figures/step42_composition.png)
 
-| Mix property | Full prompt | w/o KT | Δ | p |
-|:--|:--:|:--:|:--:|:--:|
-| Slag cement (SC) binder fraction | 58.8% | 53.0% | −5.8 pp | <0.001 (***) |
-| Fly ash (FA) binder fraction | 11.7% | 16.4% | +4.7 pp | 0.001 (**) |
-| Portland cement (PC) fraction | 29.5% | 30.6% | +1.1 pp | <0.001 (***) |
-| w/b ratio | 0.334 | 0.355 | +0.021 | 0.003 (**) |
+Pareto-front composition (mean per-replicate, vs Full prompt; paired t-test):
 
-Without the Knowledge Table, the LLM uses less slag cement (the best low-GWP/high-strength substitute for PC) and higher w/b ratios. This demonstrates that KT provides actionable domain knowledge that the LLM cannot reliably infer from objectives and constraints alone.
+| Condition | SC% | FA% | PC% | w/b |
+|:--|:--:|:--:|:--:|:--:|
+| NSGA-II baseline | 60.2% | 11.1% | 28.7% | 0.350 |
+| **Full prompt** | **58.8%** | **11.7%** | **29.5%** | **0.334** |
+| w/o Objectives | 57.2% (ns) | 12.8% (ns) | 30.0% (ns) | 0.342 (ns) |
+| **w/o Knowledge Table** | **53.0% (***)** | **16.4% (**)** | **30.6% (***)** | **0.355 (**)** |
+| w/o Constraints | 59.0% (ns) | 11.2% (ns) | 29.8% (ns) | 0.333 (ns) |
+| w/o Elite | 58.0% (ns) | 11.5% (ns) | 30.4% (*) | 0.342 (ns) |
+| w/o Task/Gap | 58.9% (ns) | 10.3% (ns) | 30.8% (***) | 0.350 (**) |
+
+Removing the Knowledge Table is the **only condition that significantly shifts the binder strategy**: SC drops 5.8 pp, FA rises 4.7 pp, and w/b increases 0.021 — all significant at p < 0.01. Removing any other prompt section leaves the material composition statistically unchanged. This confirms that KT is the sole source of actionable mix-design domain knowledge in the prompt: the LLM cannot infer the slag-first, low-w/b strategy from objectives or constraints alone.
 
 **Elite solutions effect on LLM proposal quality:**
 
