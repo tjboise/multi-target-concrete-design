@@ -62,36 +62,49 @@ div_hyb_arr = np.array([r["div_hyb"]  for r in reps_data])
 div_base_arr= np.array([r["div_base"] for r in reps_data])
 
 # ══════════════════════════════════════════════════════════════
-# Fig 1: Pareto front scatter (all reps pooled)
+# Fig 1: Pareto front — binned mean ± 1 SD (no scatter dots)
 # ══════════════════════════════════════════════════════════════
 fig, ax = plt.subplots(figsize=(9, 6))
 
-all_base = pd.concat([r["bpf"] for r in reps_data])
-all_hyb  = pd.concat([r["hpf"] for r in reps_data])
+# Bin GWP axis; for each bin take per-rep max strength, then average across reps
+GWP_BINS = np.linspace(130, 320, 30)
 
-ax.scatter(all_base["GWP"], all_base["28day"], s=4, color="#9CA3AF", alpha=0.3,
-           label=f"NSGA-II baseline ({REPS} reps)", zorder=1)
-ax.scatter(all_hyb["GWP"],  all_hyb["28day"],  s=5, color="#1D4ED8", alpha=0.35,
-           label=f"Hybrid N=15 ({REPS} reps)", zorder=2)
+def rep_binned(pf_list, bins):
+    """For each rep's Pareto front, compute max strength per GWP bin."""
+    n_bins = len(bins) - 1
+    mat = np.full((len(pf_list), n_bins), np.nan)
+    for ri, pf in enumerate(pf_list):
+        for bi in range(n_bins):
+            sub = pf[(pf["GWP"] >= bins[bi]) & (pf["GWP"] < bins[bi+1])]
+            if len(sub):
+                mat[ri, bi] = sub["28day"].max()
+    return mat
 
-# binned upper envelope
-for df, color, ls in [(all_base,"#6B7280","--"), (all_hyb,"#1D4ED8","-")]:
-    bins = np.linspace(df["GWP"].min(), df["GWP"].max(), 25)
-    bgwp, bstr, bsd = [], [], []
-    for i in range(len(bins)-1):
-        sub = df[(df["GWP"]>=bins[i])&(df["GWP"]<bins[i+1])]
-        if len(sub)>=3:
-            bgwp.append(bins[i:i+2].mean())
-            bstr.append(sub["28day"].max())
-            bsd.append(sub["28day"].std())
-    if bgwp:
-        ax.plot(bgwp, bstr, color=color, lw=2, ls=ls, zorder=3)
+bin_centers = (GWP_BINS[:-1] + GWP_BINS[1:]) / 2
+
+base_pfs = [r["bpf"] for r in reps_data]
+hyb_pfs  = [r["hpf"] for r in reps_data]
+
+for pf_list, color, label in [
+    (base_pfs, "#6B7280", f"NSGA-II baseline (n={REPS})"),
+    (hyb_pfs,  "#1D4ED8", f"Hybrid N=15 (n={REPS})"),
+]:
+    mat  = rep_binned(pf_list, GWP_BINS)
+    mean = np.nanmean(mat, axis=0)
+    sd   = np.nanstd(mat,  axis=0)
+    mask = ~np.isnan(mean)
+    ax.plot(bin_centers[mask], mean[mask], color=color, lw=2.2, label=label, zorder=3)
+    ax.fill_between(bin_centers[mask],
+                    mean[mask] - sd[mask],
+                    mean[mask] + sd[mask],
+                    color=color, alpha=0.18, zorder=2)
 
 ax.set_xlabel("GWP (kg CO₂/m³)", fontsize=11)
 ax.set_ylabel("28-day compressive strength (MPa)", fontsize=11)
 ax.set_title(f"Pareto Front: NSGA-II vs Hybrid (N=15)\n"
-             f"All {REPS} replicates pooled (mean ΔHV = +0.082, p < 0.001)", fontsize=11)
-ax.legend(fontsize=9, markerscale=2)
+             f"Mean ± 1 SD of max strength per GWP bin across {REPS} replicates  "
+             f"(mean ΔHV = +0.082, p < 0.001)", fontsize=11)
+ax.legend(fontsize=10, framealpha=0.9)
 ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False)
 plt.tight_layout()
 plt.savefig(OUTDIR/"pareto_front_everyg.png", dpi=150, bbox_inches="tight")
