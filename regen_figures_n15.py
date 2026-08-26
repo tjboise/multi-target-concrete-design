@@ -210,54 +210,38 @@ plt.close()
 print("Saved step2_area.png")
 
 # ══════════════════════════════════════════════════════════════
-# Fig 5: Step 3 diversity box plot
+# Fig 5: Step 3 diversity — single box plot + jitter dots
 # ══════════════════════════════════════════════════════════════
-ddiv = div_hyb_arr - div_base_arr
 t, pt = stats.ttest_rel(div_hyb_arr, div_base_arr, alternative="two-sided")
 w, pw = stats.wilcoxon(div_hyb_arr, div_base_arr, alternative="two-sided")
 
-fig, axes = plt.subplots(1, 2, figsize=(10, 5))
+fig, ax = plt.subplots(figsize=(6, 5))
 
-# Left: paired box
-ax = axes[0]
-bp = ax.boxplot([div_base_arr, div_hyb_arr], patch_artist=True,
-                medianprops=dict(color="white", lw=2),
-                flierprops=dict(marker=".", ms=4, alpha=0.4),
-                whiskerprops=dict(lw=1.2), capprops=dict(lw=1.2))
 colors_box = ["#9CA3AF", "#1D4ED8"]
+bp = ax.boxplot([div_base_arr, div_hyb_arr], patch_artist=True,
+                medianprops=dict(color="white", lw=2.5),
+                flierprops=dict(marker=".", ms=4, alpha=0.4),
+                whiskerprops=dict(lw=1.3), capprops=dict(lw=1.3))
 for patch, c in zip(bp["boxes"], colors_box):
     patch.set_facecolor(c); patch.set_alpha(0.75); patch.set_edgecolor(c)
-for w2, c in zip(bp["whiskers"], [c for c in colors_box for _ in range(2)]):
-    w2.set_color(c)
+for wh, c in zip(bp["whiskers"], [c for c in colors_box for _ in range(2)]):
+    wh.set_color(c)
 for cap, c in zip(bp["caps"], [c for c in colors_box for _ in range(2)]):
     cap.set_color(c)
+
 rng = np.random.default_rng(42)
 for i, (arr, c) in enumerate(zip([div_base_arr, div_hyb_arr], colors_box)):
-    ax.scatter(i+1+rng.uniform(-0.12,0.12,len(arr)), arr, s=16, color=c, alpha=0.5, zorder=3)
-# paired lines
-for b, h in zip(div_base_arr, div_hyb_arr):
-    ax.plot([1,2],[b,h], color="#9CA3AF", lw=0.5, alpha=0.4)
-ax.set_xticks([1,2])
-ax.set_xticklabels(["NSGA-II\nbaseline", "Hybrid\nN=15"], fontsize=10)
+    ax.scatter(i+1+rng.uniform(-0.14, 0.14, len(arr)), arr,
+               s=20, color=c, alpha=0.55, zorder=3)
+
+sig = "***" if pw < 0.001 else ("**" if pw < 0.01 else ("*" if pw < 0.05 else "ns"))
+ax.set_xticks([1, 2])
+ax.set_xticklabels(["NSGA-II\nbaseline", "Hybrid\nN=15"], fontsize=11)
 ax.set_ylabel("Diversity (mean pairwise dist, norm. space)", fontsize=10)
-ax.set_title(f"(A) Pareto Front Diversity\nt={t:.2f}, p={pt:.4f}", fontsize=10)
+ax.set_title(f"Pareto Front Diversity (n={REPS} paired replicates)\n"
+             f"Δ = +{(div_hyb_arr-div_base_arr).mean():.3f}, p {pw:.4f} ({sig})", fontsize=10)
 ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False)
 
-# Right: ΔDiv vs ΔHV scatter
-ax = axes[1]
-ax.scatter(ddiv, dhv_arr, color="#1D4ED8", alpha=0.65, s=40, edgecolors="white", lw=0.5)
-r, pr = stats.pearsonr(ddiv, dhv_arr)
-m, b_int = np.polyfit(ddiv, dhv_arr, 1)
-xline = np.linspace(ddiv.min(), ddiv.max(), 50)
-ax.plot(xline, m*xline+b_int, color="#DC2626", lw=1.8, ls="--")
-ax.axhline(0, color="#9CA3AF", lw=0.8, ls=":")
-ax.axvline(0, color="#9CA3AF", lw=0.8, ls=":")
-ax.set_xlabel("ΔDiversity (hybrid − baseline)", fontsize=10)
-ax.set_ylabel("ΔHV (hybrid − baseline)", fontsize=10)
-ax.set_title(f"(B) ΔDiversity vs ΔHV\nr = {r:.3f}, p = {pr:.3f}", fontsize=10)
-ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False)
-
-fig.suptitle(f"Step 3 — Pareto Front Diversity (N=15, n={REPS} paired replicates)", fontsize=11, fontweight="bold")
 plt.tight_layout()
 plt.savefig(OUTDIR/"step3_paired.png", dpi=150, bbox_inches="tight")
 plt.close()
