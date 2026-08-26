@@ -730,7 +730,7 @@ def call_llm_for_solutions(elite: list, raw_b: dict, der_b: dict, phys_b: dict,
                 contents=prompt,
                 config=genai_types.GenerateContentConfig(
                     temperature=cfg.temperature,
-                    max_output_tokens=2048,
+                    max_output_tokens=8192,
                     **extra,
                 ),
             )

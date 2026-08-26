@@ -1,6 +1,6 @@
 # Multi-Target Concrete Mix Design via LLM-Augmented NSGA-II
 
-Simultaneously minimizes GWP (kg CO₂e/m³) and maximizes 28-day compressive strength (MPa) using an **LLM-hybrid NSGA-II** optimizer. Every generation, Gemini proposes 5 new candidate mixes that are appended to NSGA-II's offspring pool before environmental selection. A paired baseline (same seeds, no LLM) runs in parallel for significance testing.
+Simultaneously minimizes GWP (kg CO₂e/m³) and maximizes 28-day compressive strength (MPa) using an **LLM-hybrid NSGA-II** optimizer. Every generation, Gemini proposes 15 new candidate mixes that are appended to NSGA-II's offspring pool before environmental selection. A paired baseline (same seeds, no LLM) runs in parallel for significance testing.
 
 ---
 
@@ -109,14 +109,14 @@ Stage 3: f(mix features, pred_28d)→ pred_56day
 
 ### Architecture
 
-Every generation, 5 LLM-proposed solutions are **appended** to NSGA-II's offspring pool (augment mode — the genetic offspring are never replaced). NSGA-II's environmental selection then decides which solutions survive based on non-domination rank and crowding distance.
+Every generation, 15 LLM-proposed solutions are **appended** to NSGA-II's offspring pool (augment mode — the genetic offspring are never replaced). NSGA-II's environmental selection then decides which solutions survive based on non-domination rank and crowding distance.
 
 ```
 NSGA-II generation loop
   ├── SBX crossover + polynomial mutation  →  offspring (pop_size solutions)
   ├── every generation:
-  │     elite solutions → Gemini prompt → 5 new candidates
-  │     append 5 candidates to offspring pool  (pool size = pop_size + 5)
+  │     elite solutions → Gemini prompt → 15 new candidates
+  │     append 15 candidates to offspring pool  (pool size = pop_size + 15)
   └── fast non-dominated sort + crowding distance → next population (pop_size)
 ```
 
@@ -137,7 +137,7 @@ Each LLM call sends a structured prompt with five sections:
 | **Material Reference** | GWP factors per ingredient, strength mechanisms, two-path optimization strategy |
 | **Constraints** | All three constraint layers with exact bounds and formulas |
 | **Pareto Elite** | Up to 10 current best non-dominated solutions from NSGA-II |
-| **Task** | Generate 5 mixes targeting under-explored regions of the Pareto front |
+| **Task** | Generate 15 mixes targeting under-explored regions of the Pareto front |
 
 <details>
 <summary>Full example prompt</summary>
@@ -177,8 +177,8 @@ A Pareto-optimal mix cannot improve one objective without worsening the other.
 [... constraints section omitted for brevity ...]
 
 ## Task: Generate 5 New Candidate Mixes
-Generate 5 mixes that push or extend the current Pareto front.
-Return exactly 5 mixes as a JSON array.
+Generate 15 mixes that push or extend the current Pareto front.
+Return exactly 15 mixes as a JSON array.
 ```
 
 </details>
@@ -187,7 +187,7 @@ Return exactly 5 mixes as a JSON array.
 
 ## Results
 
-**Experiment:** `grid_everyg` — 30 paired replicates, pop=50, gen=100, 5 LLM solutions injected every generation (augment mode), `seed=rep`, `constraint_mode=feasibility_first`, `gemini-2.5-flash-lite`.
+**Experiment:** `nsweep_n15` — 30 paired replicates, pop=50, gen=100, 15 LLM solutions injected every generation (augment mode), `seed=rep`, `constraint_mode=feasibility_first`, `gemini-2.5-flash-lite`.
 
 HV normalized in [0,1]² using dataset-derived bounds (GWP: [169, 534.5] kg CO₂/m³; strength: [17.4, 106.1] MPa; reference point: [1,1]).
 
@@ -197,10 +197,10 @@ HV normalized in [0,1]² using dataset-derived bounds (GWP: [169, 534.5] kg CO�
 
 | Metric | Value |
 |--------|-------|
-| Mean ΔHV (hybrid − baseline) | **+0.046** |
-| % replicates improved | **77%** |
-| Paired t-test (one-sided) | t = 3.16, **p = 0.0018** |
-| Wilcoxon signed-rank (one-sided) | W = 378, **p = 0.0010** |
+| Mean ΔHV (hybrid − baseline) | **+0.082** |
+| % replicates improved | **83%** |
+| Paired t-test (one-sided) | t = 4.95, **p < 0.001** |
+| Wilcoxon signed-rank (one-sided) | W = 424, **p < 0.001** |
 
 #### Pareto front (all 30 replicates)
 
@@ -224,20 +224,20 @@ Change in mean ΔHV from one generation to the next. **Red bars**: LLM contribut
 
 ### Step 2 — LLM Solution Quality
 
-15,000 LLM solutions logged across 30 replicates (500 solutions per rep: 5 solutions × 100 generations).
+45,000 LLM solutions logged across 30 replicates (1,500 solutions per rep: 15 solutions × 100 generations).
 
 | Quality Metric | Mean | SD |
 |---------------|-----:|---:|
-| Fraction feasible (all constraints satisfied) | 59.4% | 7.6% |
-| Fraction non-dominated (vs. current front) | 26.6% | 4.6% |
-| Fraction useful (feasible **and** non-dominated) | 13.8% | 3.3% |
-| Median distance to Pareto front (normalized) | 0.020 | 0.009 |
+| Fraction feasible (all constraints satisfied) | 54.0% | 6.0% |
+| Fraction non-dominated (vs. current front) | 19.5% | 3.0% |
+| Fraction useful (feasible **and** non-dominated) | 10.5% | 2.2% |
+| Median distance to Pareto front (normalized) | 0.010 | — |
 
 #### LLM solution quality over generations
 
 ![LLM solution quality stacked area — 100 generations, 30 replicates](results/figures/step2_area.png)
 
-Each generation, 5 LLM solutions are injected. The stacked area shows their breakdown: useful (feasible and non-dominated, red), feasible but dominated (orange), and infeasible (grey). Quality peaks in early generations when the Pareto front is sparse, then declines as NSGA-II refines it.
+Each generation, 15 LLM solutions are injected. The stacked area shows their breakdown: useful (feasible and non-dominated, red), feasible but dominated (orange), and infeasible (grey). Quality peaks in early generations when the Pareto front is sparse, then declines as NSGA-II refines it.
 
 **Correlations with per-replicate ΔHV** (n = 30):
 
@@ -263,13 +263,13 @@ where $\tilde{x}_i = \bigl(\frac{\text{GWP}_i - 169}{534.5 - 169},\; 1 - \frac{\
 
 | | Baseline | Hybrid | Δ |
 |--|:--------:|:------:|:-:|
-| Mean diversity | 0.174 | 0.198 | **+0.024 (+13.6%)** |
+| Mean diversity | 0.174 | 0.218 | **+0.044 (+25.4%)** |
 | SD | 0.034 | 0.035 | — |
-| % replicates with higher diversity | — | — | **70%** |
+| % replicates with higher diversity | — | — | **83%** |
 
-- Paired t-test (two-sided): t = 3.14, **p = 0.0039**
-- Wilcoxon (two-sided): W = 112, **p = 0.0120**
-- Correlation ΔDiversity vs ΔHV: **r = +0.593, p = 0.001**
+- Paired t-test (two-sided): t = 5.56, **p < 0.001**
+- Wilcoxon (two-sided): W = 38, **p < 0.001**
+- Correlation ΔDiversity vs ΔHV: **r = +0.680, p < 0.001**
 
 LLM injection not only improves the hypervolume but also spreads the Pareto front more broadly across the GWP–strength trade-off space. Replicates with larger diversity gains also achieved larger HV gains.
 
@@ -285,18 +285,18 @@ Two ablation experiments isolate *what* drives the hybrid's HV gain. Both use th
 
 Four methods are compared. Pure-LLM uses LLM-only generation (no NSGA-II evolution). Hybrid Replace overwrites the N worst offspring before selection; Hybrid Augment appends LLM solutions to the offspring pool.
 
-| Method | Mean HV | ΔHV vs NSGA-II | % Positive | p (Wilcoxon) |
-|:--|:--:|:--:|:--:|:--:|
-| NSGA-II (baseline) | 0.780 | — | — | — |
-| Pure LLM | 0.569 | −0.211 | 0% | 1.000 (ns) |
-| Hybrid Replace | 0.817 | +0.037 | 66% | 0.006 (**) |
-| **Hybrid Augment** | **0.826** | **+0.046** | **76%** | **0.001 (**)** |
+| Method | N | Mean HV | ΔHV vs NSGA-II | % Positive | p (Wilcoxon) |
+|:--|:--:|:--:|:--:|:--:|:--:|
+| NSGA-II (baseline) | — | 0.780 | — | — | — |
+| Pure LLM | 5 | 0.569 | −0.211 | 0% | 1.000 (ns) |
+| Hybrid Replace | 5 | 0.817 | +0.037 | 66% | 0.006 (**) |
+| **Hybrid Augment** | **15** | **0.862** | **+0.082** | **83%** | **<0.001 (***)** |
 
-Letting NSGA-II's selection pressure operate over the enlarged pool (Augment) outperforms both Replace and Pure-LLM. Pure-LLM without evolutionary selection diverges severely, confirming that NSGA-II's tournament selection is load-bearing.
+Letting NSGA-II's selection pressure operate over the enlarged pool (Augment) outperforms both Replace and Pure-LLM. Pure-LLM without evolutionary selection diverges severely, confirming that NSGA-II's tournament selection is load-bearing. N=15 is the optimal injection count identified by N-sweep (see below).
 
 #### Step 4.2 — Leave-One-Out Prompt Ablation
 
-The full prompt contains five sections (Objectives, Knowledge Table, Constraints, Elite solutions, Task/gap targeting). Each variant removes exactly one section; all other settings are identical to the full Hybrid Augment.
+The full prompt contains five sections (Objectives, Knowledge Table, Constraints, Elite solutions, Task/gap targeting). Each variant removes exactly one section; all other settings are identical to the full Hybrid Augment. This ablation was conducted at N=5 to isolate prompt component effects from injection-count effects.
 
 | Prompt condition | Mean ΔHV | p (Wilcoxon) | Contribution* |
 |:--|:--:|:--:|:--:|
