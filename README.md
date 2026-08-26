@@ -308,13 +308,18 @@ Four methods are compared at N=15 (30 paired replicates, every-gen augment, seed
 | Method | N | Mean HV | ΔHV vs NSGA-II | % Positive | p (Wilcoxon) |
 |:--|:--:|:--:|:--:|:--:|:--:|
 | NSGA-II (baseline) | — | 0.780 | — | — | — |
-| Pure LLM | 15 | — | — | — | *pending* |
-| Hybrid Replace | 15 | — | — | — | *pending* |
+| Pure LLM | 15 | 0.599 | −0.181 | 0% | <0.001 (***) |
+| Hybrid Replace | 15 | 0.802 | +0.023 | 56% | 0.299 (ns) |
 | **Hybrid Augment** | **15** | **0.862** | **+0.082** | **83%** | **<0.001 (***)** |
 
-*Pure LLM and Hybrid Replace N=15 re-runs in progress.*
+![Step 4.1 Pareto front: all four methods at N=15](results/figures/step41_pareto.png)
 
-Letting NSGA-II's selection pressure operate over the enlarged pool (Augment) outperforms Replace and Pure-LLM at N=5 (historical baseline: Pure LLM ΔHV = −0.211, Replace ΔHV = +0.037). Pure-LLM without evolutionary selection diverges severely, confirming that NSGA-II's tournament selection is load-bearing.
+![Step 4.1 HV convergence: all four methods at N=15](results/figures/step41_convergence.png)
+
+**Key findings:**
+- **Pure LLM** collapses severely (ΔHV = −0.181, 0% improved): without NSGA-II's genetic operators and selection pressure, LLM-only search cannot maintain a competitive Pareto front. Evolutionary search is load-bearing.
+- **Hybrid Replace** at N=15 is not statistically significant (p = 0.299, ns): replacing 15 of 50 offspring (30% of the pool) each generation is too aggressive. Injected LLM solutions displace NSGA-II's offspring before selection can filter them, disrupting crowding-distance diversity maintenance. At N=5, Replace had been marginally significant (ΔHV = +0.037, p = 0.006); the degradation at N=15 shows that replace mode does not scale.
+- **Hybrid Augment** uniquely benefits from larger N: adding LLM solutions to the pool rather than replacing offspring lets NSGA-II's selection decide their fate, so quality solutions survive and poor ones are eliminated without harming genetic diversity.
 
 #### Step 4.2 — Leave-One-Out Prompt Ablation
 
