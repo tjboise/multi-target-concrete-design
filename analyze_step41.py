@@ -24,7 +24,7 @@ OUTDIR.mkdir(exist_ok=True)
 
 GWP_MIN, GWP_MAX = 169.0, 534.5
 STR_MIN, STR_MAX = 17.4, 106.1
-GWP_BINS = np.linspace(130, 320, 30)
+GWP_BINS = np.linspace(130, 325, 40)
 
 METHODS = {
     "nsga2":   ("NSGA-II baseline",    "grid_everyg_base_rep{:02d}",      "#9CA3AF", "--"),
@@ -90,23 +90,20 @@ for key, (label, tpl, color, ls) in METHODS.items():
     if pfs:
         mats[key] = rep_binned(pfs, GWP_BINS)
 
-# shared x-range: bins where ALL methods have data
+# each method plotted over its own full range — no clipping
 if mats:
-    shared_mask = np.ones(len(GWP_BINS)-1, dtype=bool)
-    for m in mats.values():
-        shared_mask &= ~np.isnan(np.nanmean(m, axis=0))
-
     for key, (label, tpl, color, ls) in METHODS.items():
         if key not in mats:
             continue
         mat  = mats[key]
         mean = np.nanmean(mat, axis=0)
         sd   = np.nanstd(mat,  axis=0)
-        ax.plot(bin_centers[shared_mask], mean[shared_mask],
+        mask = ~np.isnan(mean)
+        ax.plot(bin_centers[mask], mean[mask],
                 color=color, ls=ls, lw=2.2, label=label, zorder=3)
-        ax.fill_between(bin_centers[shared_mask],
-                        mean[shared_mask] - sd[shared_mask],
-                        mean[shared_mask] + sd[shared_mask],
+        ax.fill_between(bin_centers[mask],
+                        mean[mask] - sd[mask],
+                        mean[mask] + sd[mask],
                         color=color, alpha=0.14, zorder=2)
 
 ax.set_xlabel("GWP (kg CO2/m3)", fontsize=11)

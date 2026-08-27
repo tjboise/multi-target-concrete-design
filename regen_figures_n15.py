@@ -67,7 +67,7 @@ div_base_arr= np.array([r["div_base"] for r in reps_data])
 fig, ax = plt.subplots(figsize=(9, 6))
 
 # Bin GWP axis; for each bin take per-rep max strength, then average across reps
-GWP_BINS = np.linspace(130, 320, 30)
+GWP_BINS = np.linspace(130, 325, 40)
 
 def rep_binned(pf_list, bins):
     """For each rep's Pareto front, compute max strength per GWP bin."""
@@ -89,10 +89,7 @@ mats = {}
 for key, pf_list in [("base", base_pfs), ("hyb", hyb_pfs)]:
     mats[key] = rep_binned(pf_list, GWP_BINS)
 
-# shared x-range: bins where BOTH have data
-shared_mask = (~np.isnan(np.nanmean(mats["base"], axis=0))) & \
-              (~np.isnan(np.nanmean(mats["hyb"],  axis=0)))
-
+# each method uses its own mask — full range, no clipping
 for key, color, label in [
     ("base", "#6B7280", f"NSGA-II baseline (n={REPS})"),
     ("hyb",  "#1D4ED8", f"Hybrid N=15 (n={REPS})"),
@@ -100,7 +97,7 @@ for key, color, label in [
     mat  = mats[key]
     mean = np.nanmean(mat, axis=0)
     sd   = np.nanstd(mat,  axis=0)
-    mask = shared_mask
+    mask = ~np.isnan(mean)
     ax.plot(bin_centers[mask], mean[mask], color=color, lw=2.2, label=label, zorder=3)
     ax.fill_between(bin_centers[mask],
                     mean[mask] - sd[mask],
