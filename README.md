@@ -342,8 +342,6 @@ The full prompt has five sections (Objectives, Knowledge Table, Constraints, Eli
 
 The Knowledge Table encodes GWP emission factors, strength mechanisms, and a two-path optimization strategy (high-slag for low GWP; low w/b + WR_HR for high strength). Removing it shifts the LLM toward less optimal binder strategies.
 
-![Material composition: full prompt vs w/o KT](results/figures/step42_composition.png)
-
 Pareto-front composition (mean per-replicate, vs Full prompt; paired t-test):
 
 | Condition | SC% | FA% | PC% | w/b |
