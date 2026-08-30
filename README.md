@@ -387,13 +387,11 @@ We pooled all 30 FLAME replicates into a global non-dominated set of **85 soluti
 
 Joint OLS (standardised GWP ~ binder + eff. GWP factor): **R² = 0.983**, β(binder) = +1.43 vs β(eff. GWP factor) = +0.61. **Binder quantity accounts for 86% of GWP variance; binder quality (SCM substitution) accounts for 32%.**
 
-#### GWP decomposition — two-panel scatter
+#### GWP vs total binder content
 
-![GWP decomposition: GWP vs binder content (left) and GWP vs SC% (right)](results/figures/pareto_gwp_decomposition.png)
+![GWP vs total binder content, coloured by SC substitution rate](results/figures/pareto_gwp_decomposition.png)
 
-**(a) GWP vs total binder content** (r_s = +0.994, p < 0.001), points coloured by SC substitution rate. The near-perfect rank correlation confirms total binder mass as the dominant GWP lever.
-
-**(b) GWP vs SC substitution rate** (r_s = +0.367, p < 0.001), points coloured by total binder content. The moderate *positive* association is a structural artifact of the Pareto trade-off: high-strength designs simultaneously require more binder mass (raising GWP) and more SC (to enable low w/b for strength), so SC% and GWP rise together at the high-strength end of the front. The effective binder GWP factor is *negatively* correlated with total GWP (r_s = −0.623): high-GWP high-strength solutions actually carry a greener per-kg binder profile, but the larger binder mass overwhelms the substitution benefit.
+GWP vs total binder content (r_s = +0.994, p < 0.001), points coloured by SC substitution rate. The near-perfect rank correlation confirms total binder mass as the dominant GWP lever. Binder content alone accounts for 86% of GWP variance (OLS R² = 0.862), versus 32% for the effective binder GWP factor (which captures SCM substitution rate).
 
 **Practical implication:** at moderate-to-high strength targets, reducing total cementitious content (lean-binder strategy, higher w/b) is a more effective GWP lever than maximising SC substitution rate. Maximising SC% is appropriate only when very high strength requires a low w/b.
 
