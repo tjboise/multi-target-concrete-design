@@ -91,8 +91,8 @@ for key, pf_list in [("base", base_pfs), ("hyb", hyb_pfs)]:
 
 # each method uses its own mask — full range, no clipping
 for key, color, label in [
-    ("base", "#6B7280", f"NSGA-II baseline (n={REPS})"),
-    ("hyb",  "#1D4ED8", f"Hybrid N=15 (n={REPS})"),
+    ("base", "#6B7280", "NSGA-II"),
+    ("hyb",  "#1D4ED8", "FLAME"),
 ]:
     mat  = mats[key]
     mean = np.nanmean(mat, axis=0)
@@ -104,13 +104,13 @@ for key, color, label in [
                     mean[mask] + sd[mask],
                     color=color, alpha=0.18, zorder=2)
 
-ax.set_xlabel("GWP (kg CO₂/m³)", fontsize=11)
-ax.set_ylabel("28-day compressive strength (MPa)", fontsize=11)
-ax.set_title(f"Pareto Front: NSGA-II vs Hybrid (N=15)\n"
-             f"Mean ± 1 SD of max strength per GWP bin across {REPS} replicates  "
-             f"(mean ΔHV = +0.082, p < 0.001)", fontsize=11)
+ax.set_xlabel("GWP (kg CO$_2$/m$^3$)", fontsize=11)
+ax.set_ylabel("$f_{28}$ (MPa)", fontsize=11)
 ax.legend(fontsize=10, framealpha=0.9)
-ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False)
+for spine in ax.spines.values():
+    spine.set_visible(True)
+    spine.set_linewidth(0.8)
+    spine.set_color("black")
 plt.tight_layout()
 plt.savefig(OUTDIR/"pareto_front_everyg.png", dpi=150, bbox_inches="tight")
 plt.close()
@@ -125,8 +125,8 @@ gens = np.arange(1, 101)
 
 fig, ax = plt.subplots(figsize=(9, 5))
 for mat, color, ls, label in [
-    (base_curves, "#9CA3AF", "--", "NSGA-II baseline"),
-    (hyb_curves,  "#1D4ED8", "-",  "Hybrid N=15"),
+    (base_curves, "#9CA3AF", "--", "NSGA-II"),
+    (hyb_curves,  "#1D4ED8", "-",  "FLAME"),
 ]:
     m = np.nanmean(mat, axis=0)
     s = np.nanstd(mat, axis=0)
@@ -135,10 +135,12 @@ for mat, color, ls, label in [
 
 ax.set_xlabel("Generation", fontsize=11)
 ax.set_ylabel("Hypervolume", fontsize=11)
-ax.set_title(f"HV Convergence: NSGA-II vs Hybrid (N=15)\nmean ± 1 SD, n={REPS} paired replicates", fontsize=11)
 ax.legend(fontsize=10)
 ax.set_xlim(1, 100)
-ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False)
+for spine in ax.spines.values():
+    spine.set_visible(True)
+    spine.set_linewidth(0.8)
+    spine.set_color("black")
 plt.tight_layout()
 plt.savefig(OUTDIR/"convergence_everyg.png", dpi=150, bbox_inches="tight")
 plt.close()

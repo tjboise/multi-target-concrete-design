@@ -20,6 +20,7 @@ Simultaneously minimizes GWP (kg CO₂e/m³) and maximizes 28-day compressive st
    - [Step 4 — Ablation Study](#step-4--ablation-study)
      - [Step 4.1 — Method Comparison](#step-41--method-comparison)
      - [Step 4.2 — Leave-One-Out Prompt Ablation](#step-42--leave-one-out-prompt-ablation)
+   - [Step 5 — Physical Interpretation: GWP Drivers](#step-5--physical-interpretation-gwp-drivers-across-the-pareto-front)
 4. [Evaluation Metrics](#evaluation-metrics)
 5. [Repository Structure](#repository-structure)
 6. [Setup and Usage](#setup-and-usage)
@@ -372,6 +373,32 @@ Removing Elite solutions reduces useful LLM proposals by 95%: the LLM proposes s
 
 ---
 
+### Step 5 — Physical Interpretation: GWP Drivers Across the Pareto Front
+
+We pooled all 30 FLAME replicates into a global non-dominated set of **85 solutions** spanning GWP 137–278 kg CO₂/m³ and 28-day strength 46–103 MPa, and used Spearman rank correlation + OLS regression to identify what drives GWP variation across the full trade-off curve.
+
+#### Key finding: total binder content, not SC substitution rate, dominates GWP
+
+| Predictor | Spearman r_s | p | R² alone (OLS) |
+|:--|:--:|:--:|:--:|
+| Total binder content (PC+SC+FA, kg/m³) | **+0.994** | **<0.001** | **0.862** |
+| Effective binder GWP factor (kg CO₂/kg binder) | −0.623 | <0.001 | 0.317 |
+| SC substitution rate (%) | +0.367 | <0.001 | — |
+
+Joint OLS (standardised GWP ~ binder + eff. GWP factor): **R² = 0.983**, β(binder) = +1.43 vs β(eff. GWP factor) = +0.61. **Binder quantity accounts for 86% of GWP variance; binder quality (SCM substitution) accounts for 32%.**
+
+#### GWP decomposition — two-panel scatter
+
+![GWP decomposition: GWP vs binder content (left) and GWP vs SC% (right)](results/figures/pareto_gwp_decomposition.png)
+
+**(a) GWP vs total binder content** (r_s = +0.994, p < 0.001), points coloured by SC substitution rate. The near-perfect rank correlation confirms total binder mass as the dominant GWP lever.
+
+**(b) GWP vs SC substitution rate** (r_s = +0.367, p < 0.001), points coloured by total binder content. The moderate *positive* association is a structural artifact of the Pareto trade-off: high-strength designs simultaneously require more binder mass (raising GWP) and more SC (to enable low w/b for strength), so SC% and GWP rise together at the high-strength end of the front. The effective binder GWP factor is *negatively* correlated with total GWP (r_s = −0.623): high-GWP high-strength solutions actually carry a greener per-kg binder profile, but the larger binder mass overwhelms the substitution benefit.
+
+**Practical implication:** at moderate-to-high strength targets, reducing total cementitious content (lean-binder strategy, higher w/b) is a more effective GWP lever than maximising SC substitution rate. Maximising SC% is appropriate only when very high strength requires a low w/b.
+
+---
+
 ## Evaluation Metrics
 
 ### HV — Hypervolume
@@ -405,6 +432,7 @@ Average pairwise Euclidean distance between all Pareto front solutions in normal
 ├── regen_figures_n15.py          # Regenerate Steps 1–3 figures from N=15 data
 ├── analyze_nsweep_final.py       # N-sweep analysis figure (Step 1 N-sweep)
 ├── analyze_step42.py             # Step 4.2 composition + elite effect figures
+├── analyze_pareto_gwp.py         # Step 5: GWP decomposition (Spearman + OLS across global Pareto front)
 ├── Concrete_Data_SI_clean.csv    # Dataset (756 mixes filtered by Vfinal, kg/m³)
 ├── results/
 │   ├── figures/                  # Figures for README
@@ -415,7 +443,8 @@ Average pairwise Euclidean distance between all Pareto front solutions in normal
 │   │   ├── step3_paired.png
 │   │   ├── nsweep_final.png          # N-sweep ΔHV comparison (Step 1)
 │   │   ├── step42_composition.png    # Material composition: full vs w/o KT
-│   │   └── step42_elite_effect.png   # frac_useful + diversity: full vs w/o Elite
+│   │   ├── step42_elite_effect.png   # frac_useful + diversity: full vs w/o Elite
+│   │   └── pareto_gwp_decomposition.png  # Step 5: GWP vs binder content + GWP vs SC%
 │   ├── nsweep_n{05,10,15,20,25}_rep{01-30}/  # N-sweep hybrid runs
 │   ├── grid_everyg_hyb_rep{01-30}/   # N=5 hybrid runs (reused as N=5 in N-sweep)
 │   ├── grid_everyg_base_rep{01-30}/  # Baseline NSGA-II runs (shared across experiments)
