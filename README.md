@@ -427,18 +427,18 @@ To characterize *when* and *at what quality* each method converges, we apply a f
 
 **Convergence criterion:** W = 30, ε = 0.002 (30-generation rolling improvement < 0.002 HV units).
 
-| Metric | FLAME (n=30, 500 gen) | NSGA-II (n=10, 500 gen) |
+| Metric | FLAME (n=30, 500 gen) | NSGA-II (n=30, 500 gen) |
 |:--|:--:|:--:|
 | Mean convergence generation | **220 ± 41** | 257 ± 62 |
-| HV at convergence | **0.908 ± 0.067** | 0.891 ± 0.090 |
-| Replicates converging within 500 gen | 30/30 | 10/10 |
+| HV at convergence | **0.908 ± 0.067** | 0.887 ± 0.088 |
+| Replicates converging within 500 gen | 30/30 | 30/30 |
 | Speedup (gen ratio) | **1.17×** | — |
 
 #### HV curves to convergence
 
 ![HV convergence curves — FLAME truncated at 220 gen, NSGA-II at 257 gen](results/figures/conv_part1_hv.png)
 
-Curves are truncated at each method's mean convergence generation. Terminal markers (● FLAME, ■ NSGA-II) show the mean HV at convergence. FLAME reaches a higher HV (0.908) in fewer generations than NSGA-II (0.891 at 257 gen), with tighter variance across the 30 replicates.
+Curves are truncated at each method's mean convergence generation. Terminal markers (● FLAME, ■ NSGA-II) show the mean HV at convergence. FLAME reaches a higher HV (0.908) in fewer generations than NSGA-II (0.887 at 257 gen). Both methods use n=30 replicates for a fair comparison.
 
 #### Pareto front at convergence
 
@@ -483,7 +483,7 @@ Average pairwise Euclidean distance between all Pareto front solutions in normal
 ├── analyze_step42.py             # Step 4.2 composition + elite effect figures
 ├── analyze_pareto_gwp.py         # Step 5: GWP decomposition (Spearman + OLS across global Pareto front)
 ├── run_flame_long_multi.py       # Step 6–7: FLAME 500gen runner (30 reps, seed=rep)
-├── run_baselines_long.py         # Step 6: MOPSO + MOEA/D 500gen runner (30 reps each)
+├── run_baselines_long.py         # Step 6–7: MOPSO + MOEA/D + NSGA-II 500gen runner (30 reps each)
 ├── run_baseline_1000gen.py       # Step 7 Part 2: pure NSGA-II 1000gen runner (10 reps)
 ├── optimizer_mopso.py            # MOPSO implementation (Coello 2004 archive-based)
 ├── optimizer_moead.py            # MOEA/D implementation (Tchebycheff decomposition)
@@ -509,7 +509,7 @@ Average pairwise Euclidean distance between all Pareto front solutions in normal
 │   ├── abl41_replace_n15_rep{01-30}/ # Step 4.1: hybrid replace N=15 runs
 │   ├── abl42_no_{obj,kt,con,elite,task}_rep{01-30}/  # Step 4.2: LOO ablation runs
 │   ├── flame_long_g500_rep{01-30}/   # Step 6–7: FLAME 500gen runs
-│   ├── baseline_long_g500_rep{01-10}/# Step 6–7: NSGA-II 500gen runs
+│   ├── baseline_long_g500_rep{01-30}/# Step 6–7: NSGA-II 500gen runs (n=30)
 │   ├── mopso_long_g500_rep{01-30}/   # Step 6: MOPSO 500gen runs
 │   ├── moead_long_g500_rep{01-30}/   # Step 6: MOEA/D 500gen runs
 │   └── baseline_1000gen_rep{01-10}/  # Step 7 Part 2: NSGA-II 1000gen runs
