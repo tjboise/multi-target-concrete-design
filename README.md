@@ -399,25 +399,43 @@ GWP vs total binder content (r_s = +0.994, p < 0.001), points coloured by SC sub
 
 ### Step 6 — Extended Baseline Comparison at 500 Generations
 
-To assess FLAME's advantage beyond the 100-generation window used in Steps 1–4, we ran all four methods for **500 generations** (30 replicates each for FLAME, MOPSO, and MOEA/D; 10 replicates for NSGA-II), adding two additional evolutionary baselines:
+To assess FLAME's advantage beyond the 100-generation window used in Steps 1–4, we ran all four methods for **500 generations** (30 replicates each), adding two additional evolutionary baselines:
 
 - **MOPSO** — Multi-Objective Particle Swarm Optimization (Coello 2004; archive-based, w=0.4, c₁=c₂=2.0, crowding-distance leader selection)
 - **MOEA/D** — Multi-Objective Evolutionary Algorithm with Decomposition (Zhang & Li 2007; Tchebycheff decomposition, T=10 neighborhood, SBX+PM operators)
 
+#### At 500 generations (fixed budget)
+
 | Method | N gen | N reps | Mean HV | % improvement rate at gen 400→500 |
 |:--|:--:|:--:|:--:|:--:|
 | **FLAME** | 500 | 30 | **0.936** | ~0% (converged) |
-| NSGA-II | 500 | 10 | 0.904 | ~1.2% |
+| NSGA-II | 500 | 30 | 0.904 | ~1.2% |
 | MOPSO | 500 | 30 | 0.836 | ~2.8% |
 | MOEA/D | 500 | 30 | 0.829 | ~9.2% (not yet converged) |
 
 ![4-way Pareto front and HV convergence at 500 generations](results/figures/pareto_500gen_4way.png)
 
+#### At each method's own convergence (W=30, ΔHV<0.002)
+
+Each method is evaluated until it meets the convergence criterion, removing the fixed-budget assumption.
+
+| Method | Conv. gen (mean ± std) | HV at convergence |
+|:--|:--:|:--:|
+| MOPSO | 140 ± 37 | 0.771 ± 0.043 |
+| **FLAME** | **220 ± 41** | **0.908 ± 0.067** |
+| MOEA/D | 242 ± 103 | 0.746 ± 0.116 |
+| NSGA-II | 280 ± 82 | 0.881 ± 0.090 |
+
+![4-way HV curves to convergence](results/figures/conv_4way_hv.png)
+
+![4-way Pareto front at each method's convergence](results/figures/conv_4way_pf.png)
+
 **Key findings:**
-- FLAME (0.936) > NSGA-II (0.904) > MOPSO (0.836) > MOEA/D (0.829) at 500 generations.
-- FLAME is the only method that has fully converged by gen 500; MOEA/D is still actively improving at 9.2% relative gain rate per 100 generations.
-- MOPSO's archive-based selection improves early diversity but plateaus at a lower asymptote than NSGA-II, suggesting the NSGA-II selection mechanism is better suited to this constrained, high-dimensional space.
-- MOEA/D's Tchebycheff decomposition struggles with the non-convex Pareto front shape typical of binder-dominated concrete trade-offs.
+- At 500 gen: FLAME (0.936) > NSGA-II (0.904) > MOPSO (0.836) > MOEA/D (0.829).
+- At convergence: FLAME achieves the highest quality (HV=0.908) and converges faster than NSGA-II (220 vs 280 gen, 1.27× speedup).
+- MOPSO converges fastest (140 gen) but plateaus at a low HV (0.771), indicating premature convergence to a suboptimal region.
+- MOEA/D has the highest variance in convergence generation (±103 gen) and lowest final quality, reflecting difficulty with the non-convex Pareto shape in this constrained space.
+- FLAME is the only method that is both fast-to-converge *and* high-quality at convergence.
 
 ---
 
@@ -500,7 +518,9 @@ Average pairwise Euclidean distance between all Pareto front solutions in normal
 │   │   ├── step42_elite_effect.png   # frac_useful + diversity: full vs w/o Elite
 │   │   ├── pareto_gwp_decomposition.png  # Step 5: GWP vs binder content + GWP vs SC%
 │   │   ├── pareto_500gen_4way.png    # Step 6: 4-way Pareto + HV at 500gen
-│   │   ├── conv_part1_hv.png         # Step 7: HV curves to convergence (FLAME 220gen, NSGA-II 257gen)
+│   │   ├── conv_4way_hv.png          # Step 6: 4-way HV curves to each method's convergence
+│   │   ├── conv_4way_pf.png          # Step 6: 4-way Pareto front at convergence
+│   │   ├── conv_part1_hv.png         # Step 7: HV curves to convergence (FLAME 220gen, NSGA-II 280gen)
 │   │   └── conv_part1_pf.png         # Step 7: Pareto front attainment at convergence
 │   ├── nsweep_n{05,10,15,20,25}_rep{01-30}/  # N-sweep hybrid runs
 │   ├── grid_everyg_hyb_rep{01-30}/   # N=5 hybrid runs (reused as N=5 in N-sweep)
