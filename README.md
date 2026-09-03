@@ -429,16 +429,16 @@ To characterize *when* and *at what quality* each method converges, we apply a f
 
 | Metric | FLAME (n=30, 500 gen) | NSGA-II (n=30, 500 gen) |
 |:--|:--:|:--:|
-| Mean convergence generation | **220 ± 41** | 257 ± 62 |
-| HV at convergence | **0.908 ± 0.067** | 0.887 ± 0.088 |
+| Mean convergence generation | **220 ± 41** | 280 ± 82 |
+| HV at convergence | **0.908 ± 0.067** | 0.877 ± 0.093 |
 | Replicates converging within 500 gen | 30/30 | 30/30 |
-| Speedup (gen ratio) | **1.17×** | — |
+| Speedup (gen ratio) | **1.27×** | — |
 
 #### HV curves to convergence
 
-![HV convergence curves — FLAME truncated at 220 gen, NSGA-II at 257 gen](results/figures/conv_part1_hv.png)
+![HV convergence curves — FLAME truncated at 220 gen, NSGA-II at 280 gen](results/figures/conv_part1_hv.png)
 
-Curves are truncated at each method's mean convergence generation. Terminal markers (● FLAME, ■ NSGA-II) show the mean HV at convergence. FLAME reaches a higher HV (0.908) in fewer generations than NSGA-II (0.887 at 257 gen). Both methods use n=30 replicates for a fair comparison.
+Curves are truncated at each method's mean convergence generation. Terminal markers (● FLAME, ■ NSGA-II) show the mean HV at convergence. FLAME reaches a higher HV (0.908) in fewer generations than NSGA-II (0.877 at 280 gen). Both methods use n=30 replicates for a fair comparison (1.27× speedup).
 
 #### Pareto front at convergence
 
