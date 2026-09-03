@@ -21,6 +21,8 @@ Simultaneously minimizes GWP (kg CO₂e/m³) and maximizes 28-day compressive st
      - [Step 4.1 — Method Comparison](#step-41--method-comparison)
      - [Step 4.2 — Leave-One-Out Prompt Ablation](#step-42--leave-one-out-prompt-ablation)
    - [Step 5 — Physical Interpretation: GWP Drivers](#step-5--physical-interpretation-gwp-drivers-across-the-pareto-front)
+   - [Step 6 — Extended Baseline Comparison at 500 Generations](#step-6--extended-baseline-comparison-at-500-generations)
+   - [Step 7 — Convergence Analysis: FLAME vs NSGA-II](#step-7--convergence-analysis-flame-vs-nsga-ii)
 4. [Evaluation Metrics](#evaluation-metrics)
 5. [Repository Structure](#repository-structure)
 6. [Setup and Usage](#setup-and-usage)
@@ -395,6 +397,57 @@ GWP vs total binder content (r_s = +0.994, p < 0.001), points coloured by SC sub
 
 ---
 
+### Step 6 — Extended Baseline Comparison at 500 Generations
+
+To assess FLAME's advantage beyond the 100-generation window used in Steps 1–4, we ran all four methods for **500 generations** (30 replicates each for FLAME, MOPSO, and MOEA/D; 10 replicates for NSGA-II), adding two additional evolutionary baselines:
+
+- **MOPSO** — Multi-Objective Particle Swarm Optimization (Coello 2004; archive-based, w=0.4, c₁=c₂=2.0, crowding-distance leader selection)
+- **MOEA/D** — Multi-Objective Evolutionary Algorithm with Decomposition (Zhang & Li 2007; Tchebycheff decomposition, T=10 neighborhood, SBX+PM operators)
+
+| Method | N gen | N reps | Mean HV | % improvement rate at gen 400→500 |
+|:--|:--:|:--:|:--:|:--:|
+| **FLAME** | 500 | 30 | **0.936** | ~0% (converged) |
+| NSGA-II | 500 | 10 | 0.904 | ~1.2% |
+| MOPSO | 500 | 30 | 0.836 | ~2.8% |
+| MOEA/D | 500 | 30 | 0.829 | ~9.2% (not yet converged) |
+
+![4-way Pareto front and HV convergence at 500 generations](results/figures/pareto_500gen_4way.png)
+
+**Key findings:**
+- FLAME (0.936) > NSGA-II (0.904) > MOPSO (0.836) > MOEA/D (0.829) at 500 generations.
+- FLAME is the only method that has fully converged by gen 500; MOEA/D is still actively improving at 9.2% relative gain rate per 100 generations.
+- MOPSO's archive-based selection improves early diversity but plateaus at a lower asymptote than NSGA-II, suggesting the NSGA-II selection mechanism is better suited to this constrained, high-dimensional space.
+- MOEA/D's Tchebycheff decomposition struggles with the non-convex Pareto front shape typical of binder-dominated concrete trade-offs.
+
+---
+
+### Step 7 — Convergence Analysis: FLAME vs NSGA-II
+
+To characterize *when* and *at what quality* each method converges, we apply a formal convergence criterion — **ΔHV < ε over a window of W consecutive generations** — and compare FLAME and NSGA-II on both convergence speed and quality at convergence.
+
+**Convergence criterion:** W = 30, ε = 0.002 (30-generation rolling improvement < 0.002 HV units).
+
+| Metric | FLAME (n=30, 500 gen) | NSGA-II (n=10, 500 gen) |
+|:--|:--:|:--:|
+| Mean convergence generation | **220 ± 41** | 257 ± 62 |
+| HV at convergence | **0.908 ± 0.067** | 0.891 ± 0.090 |
+| Replicates converging within 500 gen | 30/30 | 10/10 |
+| Speedup (gen ratio) | **1.17×** | — |
+
+#### HV curves to convergence
+
+![HV convergence curves — FLAME truncated at 220 gen, NSGA-II at 257 gen](results/figures/conv_part1_hv.png)
+
+Curves are truncated at each method's mean convergence generation. Terminal markers (● FLAME, ■ NSGA-II) show the mean HV at convergence. FLAME reaches a higher HV (0.908) in fewer generations than NSGA-II (0.891 at 257 gen), with tighter variance across the 30 replicates.
+
+#### Pareto front at convergence
+
+![Pareto front attainment mean ± σ at convergence](results/figures/conv_part1_pf.png)
+
+Attainment curves (mean ± 1 SD) computed across all replicates. FLAME's converged Pareto front dominates NSGA-II's across the mid-to-high GWP region (≥ 180 kg CO₂/m³), where the LLM's domain-guided proposals most effectively seed the high-strength, low-w/b corner.
+
+---
+
 ## Evaluation Metrics
 
 ### HV — Hypervolume
@@ -429,6 +482,11 @@ Average pairwise Euclidean distance between all Pareto front solutions in normal
 ├── analyze_nsweep_final.py       # N-sweep analysis figure (Step 1 N-sweep)
 ├── analyze_step42.py             # Step 4.2 composition + elite effect figures
 ├── analyze_pareto_gwp.py         # Step 5: GWP decomposition (Spearman + OLS across global Pareto front)
+├── run_flame_long_multi.py       # Step 6–7: FLAME 500gen runner (30 reps, seed=rep)
+├── run_baselines_long.py         # Step 6: MOPSO + MOEA/D 500gen runner (30 reps each)
+├── run_baseline_1000gen.py       # Step 7 Part 2: pure NSGA-II 1000gen runner (10 reps)
+├── optimizer_mopso.py            # MOPSO implementation (Coello 2004 archive-based)
+├── optimizer_moead.py            # MOEA/D implementation (Tchebycheff decomposition)
 ├── Concrete_Data_SI_clean.csv    # Dataset (756 mixes filtered by Vfinal, kg/m³)
 ├── results/
 │   ├── figures/                  # Figures for README
@@ -440,13 +498,21 @@ Average pairwise Euclidean distance between all Pareto front solutions in normal
 │   │   ├── nsweep_final.png          # N-sweep ΔHV comparison (Step 1)
 │   │   ├── step42_composition.png    # Material composition: full vs w/o KT
 │   │   ├── step42_elite_effect.png   # frac_useful + diversity: full vs w/o Elite
-│   │   └── pareto_gwp_decomposition.png  # Step 5: GWP vs binder content + GWP vs SC%
+│   │   ├── pareto_gwp_decomposition.png  # Step 5: GWP vs binder content + GWP vs SC%
+│   │   ├── pareto_500gen_4way.png    # Step 6: 4-way Pareto + HV at 500gen
+│   │   ├── conv_part1_hv.png         # Step 7: HV curves to convergence (FLAME 220gen, NSGA-II 257gen)
+│   │   └── conv_part1_pf.png         # Step 7: Pareto front attainment at convergence
 │   ├── nsweep_n{05,10,15,20,25}_rep{01-30}/  # N-sweep hybrid runs
 │   ├── grid_everyg_hyb_rep{01-30}/   # N=5 hybrid runs (reused as N=5 in N-sweep)
 │   ├── grid_everyg_base_rep{01-30}/  # Baseline NSGA-II runs (shared across experiments)
 │   ├── abl41_purellm_n15_rep{01-30}/ # Step 4.1: pure-LLM N=15 runs
 │   ├── abl41_replace_n15_rep{01-30}/ # Step 4.1: hybrid replace N=15 runs
-│   └── abl42_no_{obj,kt,con,elite,task}_rep{01-30}/  # Step 4.2: LOO ablation runs
+│   ├── abl42_no_{obj,kt,con,elite,task}_rep{01-30}/  # Step 4.2: LOO ablation runs
+│   ├── flame_long_g500_rep{01-30}/   # Step 6–7: FLAME 500gen runs
+│   ├── baseline_long_g500_rep{01-10}/# Step 6–7: NSGA-II 500gen runs
+│   ├── mopso_long_g500_rep{01-30}/   # Step 6: MOPSO 500gen runs
+│   ├── moead_long_g500_rep{01-30}/   # Step 6: MOEA/D 500gen runs
+│   └── baseline_1000gen_rep{01-10}/  # Step 7 Part 2: NSGA-II 1000gen runs
 └── README.md
 ```
 
