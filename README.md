@@ -440,8 +440,8 @@ Key observations across the three panels:
 
 To assess FLAME's advantage beyond the 100-generation window used in Steps 1–4, we ran all four methods for **500 generations** (30 replicates each), adding two additional evolutionary baselines:
 
-- **MOPSO** — Multi-Objective Particle Swarm Optimization (Coello 2004; archive-based, w=0.4, c₁=c₂=2.0, crowding-distance leader selection)
-- **MOEA/D** — Multi-Objective Evolutionary Algorithm with Decomposition (Zhang & Li 2007; Tchebycheff decomposition, T=10 neighborhood, SBX+PM operators)
+- **MOPSO** — Multi-Objective Particle Swarm Optimization
+- **MOEA/D** — Multi-Objective Evolutionary Algorithm with Decomposition
 
 #### At 500 generations (fixed budget)
 
