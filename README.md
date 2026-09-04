@@ -1,6 +1,6 @@
 # Multi-Target Concrete Mix Design via FLAME
 
-**FLAME** (**F**ramework for **L**LM-**A**ugmented **M**ulti-objective **E**volution) simultaneously minimizes GWP (kg CO₂e/m³) and maximizes 28-day compressive strength (MPa) by coupling NSGA-II with a large language model. Every generation, Gemini proposes 15 new candidate mixes that are appended to NSGA-II's offspring pool before environmental selection. A paired baseline (same seeds, no LLM) runs in parallel for significance testing.
+**FLAME** (**F**ront-guided **L**LM-**A**ugmented **M**ulti-objective **E**volution) simultaneously minimizes GWP (kg CO₂e/m³) and maximizes 28-day compressive strength (MPa) by coupling NSGA-II with a large language model. Every generation, Gemini proposes 15 new candidate mixes that are appended to NSGA-II's offspring pool before environmental selection. A paired baseline (same seeds, no LLM) runs in parallel for significance testing.
 
 ---
 
