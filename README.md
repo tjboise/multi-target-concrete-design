@@ -1,6 +1,6 @@
-# Multi-Target Concrete Mix Design via LLM-Augmented NSGA-II
+# Multi-Target Concrete Mix Design via FLAME
 
-Simultaneously minimizes GWP (kg CO₂e/m³) and maximizes 28-day compressive strength (MPa) using an **LLM-hybrid NSGA-II** optimizer. Every generation, Gemini proposes 15 new candidate mixes that are appended to NSGA-II's offspring pool before environmental selection. A paired baseline (same seeds, no LLM) runs in parallel for significance testing.
+**FLAME** (**F**ramework for **L**LM-**A**ugmented **M**ulti-objective **E**volution) simultaneously minimizes GWP (kg CO₂e/m³) and maximizes 28-day compressive strength (MPa) by coupling NSGA-II with a large language model. Every generation, Gemini proposes 15 new candidate mixes that are appended to NSGA-II's offspring pool before environmental selection. A paired baseline (same seeds, no LLM) runs in parallel for significance testing.
 
 ---
 
@@ -10,7 +10,7 @@ Simultaneously minimizes GWP (kg CO₂e/m³) and maximizes 28-day compressive st
    - [Problem Formulation](#problem-formulation)
    - [Constraints](#constraints)
    - [Surrogate Model](#surrogate-model)
-2. [LLM-NSGA-II Hybrid Optimizer](#llm-nsga-ii-hybrid-optimizer)
+2. [FLAME Optimizer](#flame-optimizer)
    - [Architecture](#architecture)
    - [Prompt Design](#prompt-design)
 3. [Results](#results)
@@ -112,7 +112,7 @@ Stage 3: f(mix features, pred_28d)→ pred_56day
 
 ---
 
-## LLM-NSGA-II Hybrid Optimizer
+## FLAME Optimizer
 
 ### Architecture
 
@@ -130,7 +130,7 @@ NSGA-II generation loop
 **Key design choices:**
 - **Augment mode** (not replace): LLM solutions compete alongside genetic offspring; NSGA-II selection pressure decides their fate.
 - **Every generation** injection: simpler than stagnation-based triggers and allows LLM to seed domain knowledge during NSGA-II's formative early phase.
-- **Paired design**: each replicate runs a hybrid and a baseline with the same random seed, so any HV difference is attributable solely to LLM injection.
+- **Paired design**: each replicate runs FLAME and a baseline with the same random seed, so any HV difference is attributable solely to LLM injection.
 
 ---
 
@@ -204,22 +204,22 @@ HV normalized in [0,1]² using dataset-derived bounds (GWP: [169, 534.5] kg CO�
 
 | Metric | Value |
 |--------|-------|
-| Mean ΔHV (hybrid − baseline) | **+0.082** |
+| Mean ΔHV (FLAME − baseline) | **+0.082** |
 | % replicates improved | **83%** |
 | Paired t-test (one-sided) | t = 4.95, **p < 0.001** |
 | Wilcoxon signed-rank (one-sided) | W = 424, **p < 0.001** |
 
 #### Pareto front (all 30 replicates)
 
-![Pareto front: NSGA-II vs LLM-Hybrid, 30 replicates](results/figures/pareto_front_everyg.png)
+![Pareto front: NSGA-II vs FLAME, 30 replicates](results/figures/pareto_front_everyg.png)
 
-Scatter of all 1,500 final Pareto solutions per method. Lines show the binned mean of maximum achievable strength per GWP interval (±1 SD shaded). The hybrid extends the front toward lower GWP and higher strength at both extremes.
+Scatter of all 1,500 final Pareto solutions per method. Lines show the binned mean of maximum achievable strength per GWP interval (±1 SD shaded). FLAME extends the front toward lower GWP and higher strength at both extremes.
 
 #### Convergence curves
 
-![HV convergence: NSGA-II vs LLM-Hybrid, mean ± 1 SD, 30 replicates](results/figures/convergence_everyg.png)
+![HV convergence: NSGA-II vs FLAME, mean ± 1 SD, 30 replicates](results/figures/convergence_everyg.png)
 
-Mean HV ± 1 SD across 30 paired replicates. The hybrid maintains a positive lead from generation 1 onward.
+Mean HV ± 1 SD across 30 paired replicates. FLAME maintains a positive lead from generation 1 onward.
 
 #### Per-generation ΔHV increment
 
@@ -229,7 +229,7 @@ Change in mean ΔHV from one generation to the next. **Red bars**: LLM contribut
 
 #### N-sweep: selecting N=15
 
-N=15 was determined by a sweep of LLM solutions per generation (N = 5, 10, 15, 20, 25), each with 30 paired replicates. The table below shows ΔHV = HV(hybrid) − HV(baseline) for each N.
+N=15 was determined by a sweep of LLM solutions per generation (N = 5, 10, 15, 20, 25), each with 30 paired replicates. The table below shows ΔHV = HV(FLAME) − HV(baseline) for each N.
 
 | N | Mean ΔHV vs baseline | SD | p (Wilcoxon, one-sided) | % reps improved |
 |:--:|:--:|:--:|:--:|:--:|
@@ -284,7 +284,7 @@ where $\tilde{x}_i = \bigl(\frac{\text{GWP}_i - 169}{534.5 - 169},\; 1 - \frac{\
 
 ![Pareto front diversity — box plot with individual replicates](results/figures/step3_paired.png)
 
-| | Baseline | Hybrid | Δ |
+| | Baseline | FLAME | Δ |
 |--|:--------:|:------:|:-:|
 | Mean diversity | 0.174 | 0.218 | **+0.044 (+25.4%)** |
 | SD | 0.034 | 0.035 | — |
@@ -300,22 +300,22 @@ LLM injection not only improves the hypervolume but also spreads the Pareto fron
 
 ### Step 4 — Ablation Study
 
-Two ablation experiments isolate *what* drives the hybrid's HV gain.
+Two ablation experiments isolate *what* drives FLAME's HV gain.
 
 #### Step 4.1 — Method Comparison
 
 Four methods are compared at N=15 (30 paired replicates, every-gen augment, seed=rep):
 - **NSGA-II** — pure evolutionary baseline, no LLM
 - **Pure LLM** — LLM-only generation at each generation, no NSGA-II evolution
-- **Hybrid Replace** — LLM solutions overwrite N offspring before NSGA-II selection
-- **Hybrid Augment** — LLM solutions appended to the offspring pool; NSGA-II selection decides their fate
+- **FLAME-Replace** — LLM solutions overwrite N offspring before NSGA-II selection
+- **FLAME-Augment** — LLM solutions appended to the offspring pool; NSGA-II selection decides their fate
 
 | Method | N | Mean HV | ΔHV vs NSGA-II | % Positive | p (Wilcoxon) |
 |:--|:--:|:--:|:--:|:--:|:--:|
 | NSGA-II (baseline) | — | 0.780 | — | — | — |
 | Pure LLM | 15 | 0.599 | −0.181 | 0% | <0.001 (***) |
-| Hybrid Replace | 15 | 0.802 | +0.023 | 56% | 0.299 (ns) |
-| **Hybrid Augment** | **15** | **0.862** | **+0.082** | **83%** | **<0.001 (***)** |
+| FLAME-Replace | 15 | 0.802 | +0.023 | 56% | 0.299 (ns) |
+| **FLAME-Augment** | **15** | **0.862** | **+0.082** | **83%** | **<0.001 (***)** |
 
 ![Step 4.1 Pareto front: all four methods at N=15](results/figures/step41_pareto.png)
 
@@ -323,8 +323,8 @@ Four methods are compared at N=15 (30 paired replicates, every-gen augment, seed
 
 **Key findings:**
 - **Pure LLM** collapses severely (ΔHV = −0.181, 0% improved): without NSGA-II's genetic operators and selection pressure, LLM-only search cannot maintain a competitive Pareto front. Evolutionary search is load-bearing.
-- **Hybrid Replace** at N=15 is not statistically significant (p = 0.299, ns): replacing 15 of 50 offspring (30% of the pool) each generation is too aggressive. Injected LLM solutions displace NSGA-II's offspring before selection can filter them, disrupting crowding-distance diversity maintenance. At N=5, Replace had been marginally significant (ΔHV = +0.037, p = 0.006); the degradation at N=15 shows that replace mode does not scale.
-- **Hybrid Augment** uniquely benefits from larger N: adding LLM solutions to the pool rather than replacing offspring lets NSGA-II's selection decide their fate, so quality solutions survive and poor ones are eliminated without harming genetic diversity.
+- **FLAME-Replace** at N=15 is not statistically significant (p = 0.299, ns): replacing 15 of 50 offspring (30% of the pool) each generation is too aggressive. Injected LLM solutions displace NSGA-II's offspring before selection can filter them, disrupting crowding-distance diversity maintenance. At N=5, Replace had been marginally significant (ΔHV = +0.037, p = 0.006); the degradation at N=15 shows that replace mode does not scale.
+- **FLAME-Augment** uniquely benefits from larger N: adding LLM solutions to the pool rather than replacing offspring lets NSGA-II's selection decide their fate, so quality solutions survive and poor ones are eliminated without harming genetic diversity.
 
 #### Step 4.2 — Leave-One-Out Prompt Ablation
 
@@ -528,9 +528,9 @@ Measures the volume of objective space dominated by the Pareto front, relative t
 
 Larger HV = front pushes further toward low GWP **and** high strength simultaneously.
 
-### ΔHV = HV(hybrid) − HV(baseline)
+### ΔHV = HV(FLAME) − HV(baseline)
 
-Primary outcome variable. Positive = hybrid outperforms the paired baseline sharing the same random seed.
+Primary outcome variable. Positive = FLAME outperforms the paired baseline sharing the same random seed.
 
 ### Diversity
 
@@ -576,11 +576,11 @@ Average pairwise Euclidean distance between all Pareto front solutions in normal
 │   │   ├── conv_part1_hv.png         # Step 7: HV curves to convergence (FLAME 220gen, NSGA-II 280gen)
 │   │   ├── conv_part1_pf.png         # Step 7: Pareto front attainment at convergence
 │   │   └── pareto_vs_dataset.png     # Step 8: FLAME Pareto front vs 667 real-world mixes
-│   ├── nsweep_n{05,10,15,20,25}_rep{01-30}/  # N-sweep hybrid runs
-│   ├── grid_everyg_hyb_rep{01-30}/   # N=5 hybrid runs (reused as N=5 in N-sweep)
+│   ├── nsweep_n{05,10,15,20,25}_rep{01-30}/  # N-sweep FLAME runs
+│   ├── grid_everyg_hyb_rep{01-30}/   # N=5 FLAME runs (reused as N=5 in N-sweep)
 │   ├── grid_everyg_base_rep{01-30}/  # Baseline NSGA-II runs (shared across experiments)
 │   ├── abl41_purellm_n15_rep{01-30}/ # Step 4.1: pure-LLM N=15 runs
-│   ├── abl41_replace_n15_rep{01-30}/ # Step 4.1: hybrid replace N=15 runs
+│   ├── abl41_replace_n15_rep{01-30}/ # Step 4.1: FLAME-Replace N=15 runs
 │   ├── abl42_no_{obj,kt,con,elite,task}_rep{01-30}/  # Step 4.2: LOO ablation runs
 │   ├── flame_long_g500_rep{01-30}/   # Step 6–7: FLAME 500gen runs
 │   ├── baseline_long_g500_rep{01-30}/# Step 6–7: NSGA-II 500gen runs (n=30)
@@ -628,6 +628,6 @@ python run_ablation_mt.py --study all --repeat 10
 
 ## Related Work
 
-This project extends LLM-augmented optimization to the multi-objective setting, benchmarking a Gemini-powered NSGA-II hybrid against a pure evolutionary baseline.
+This project extends LLM-augmented optimization to the multi-objective setting, benchmarking FLAME (a Gemini-powered NSGA-II hybrid) against pure evolutionary baselines.
 
 Companion project: [`low_carbon_concrete`](../low_carbon_concrete) — single-objective LLM optimizer (minimize GWP with a 28d strength constraint).
