@@ -395,6 +395,20 @@ GWP vs total binder content (r_s = +0.994, p < 0.001), points coloured by SC sub
 
 **Practical implication:** at moderate-to-high strength targets, reducing total cementitious content (lean-binder strategy, higher w/b) is a more effective GWP lever than maximising SC substitution rate. Maximising SC% is appropriate only when very high strength requires a low w/b.
 
+#### GWP/strength carbon efficiency across the Pareto front
+
+To capture the combined trade-off as a single efficiency metric, we compute the **GWP/strength ratio** (kg CO₂ per MPa) for every point on the pooled FLAME Pareto front (30 reps × 50 points = 1500 solutions).
+
+![FLAME Pareto front coloured by GWP/strength ratio](results/figures/gwp_strength_ratio_pf.png)
+
+Each point represents one Pareto-optimal mix design. Colour encodes carbon efficiency: green (≈2.14 kg CO₂ MPa⁻¹) is most efficient, red (≈3.5 kg CO₂ MPa⁻¹) is least. Key observations:
+
+- The **most carbon-efficient region** is the mid-to-high strength band (strength ≈ 90–105 MPa, GWP ≈ 200–230 kg CO₂/m³), not the low-GWP extreme. Low-strength designs have low absolute GWP but poor efficiency because strength drops faster than emissions.
+- The low-strength, low-GWP corner (left end) shows the highest ratio — reducing binder to cut emissions sacrifices strength disproportionately in this regime.
+- Spearman correlations confirm that higher binder content (ρ = −0.494, p < 10⁻⁹²) and higher SC% (ρ = −0.275, p < 10⁻²⁶) both independently improve carbon efficiency, consistent with the physical mechanism: slag-rich, higher-binder mixes gain strength faster than they accumulate GWP.
+
+**Practical implication:** the minimum GWP/strength solution (ratio = 2.14 kg CO₂ MPa⁻¹) sits at GWP ≈ 212 kg CO₂/m³ and strength ≈ 99 MPa — a high-strength, high-SC% mix, not the minimum-GWP mix. Designers targeting carbon efficiency per unit of structural performance should focus on this region rather than the lowest-GWP corner of the Pareto front.
+
 ---
 
 ### Step 6 — Extended Baseline Comparison at 500 Generations
@@ -517,6 +531,7 @@ Average pairwise Euclidean distance between all Pareto front solutions in normal
 │   │   ├── step42_composition.png    # Material composition: full vs w/o KT
 │   │   ├── step42_elite_effect.png   # frac_useful + diversity: full vs w/o Elite
 │   │   ├── pareto_gwp_decomposition.png  # Step 5: GWP vs binder content + GWP vs SC%
+│   │   ├── gwp_strength_ratio_pf.png # Step 5: Pareto front coloured by GWP/strength ratio
 │   │   ├── pareto_500gen_4way.png    # Step 6: 4-way Pareto + HV at 500gen
 │   │   ├── conv_4way_hv.png          # Step 6: 4-way HV curves to each method's convergence
 │   │   ├── conv_4way_pf.png          # Step 6: 4-way Pareto front at convergence
