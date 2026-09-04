@@ -21,8 +21,10 @@ Simultaneously minimizes GWP (kg CO₂e/m³) and maximizes 28-day compressive st
      - [Step 4.1 — Method Comparison](#step-41--method-comparison)
      - [Step 4.2 — Leave-One-Out Prompt Ablation](#step-42--leave-one-out-prompt-ablation)
    - [Step 5 — Physical Interpretation: GWP Drivers](#step-5--physical-interpretation-gwp-drivers-across-the-pareto-front)
+     - [Full mix composition profile](#full-mix-composition-profile-along-the-pareto-front)
    - [Step 6 — Extended Baseline Comparison at 500 Generations](#step-6--extended-baseline-comparison-at-500-generations)
    - [Step 7 — Convergence Analysis: FLAME vs NSGA-II](#step-7--convergence-analysis-flame-vs-nsga-ii)
+   - [Step 8 — Validation Against Real-World Engineering Practice](#step-8--validation-against-real-world-engineering-practice)
 4. [Evaluation Metrics](#evaluation-metrics)
 5. [Repository Structure](#repository-structure)
 6. [Setup and Usage](#setup-and-usage)
@@ -409,6 +411,29 @@ Each point represents one Pareto-optimal mix design. Colour encodes carbon effic
 
 **Practical implication:** the minimum GWP/strength solution (ratio = 2.14 kg CO₂ MPa⁻¹) sits at GWP ≈ 212 kg CO₂/m³ and strength ≈ 99 MPa — a high-strength, high-SC% mix, not the minimum-GWP mix. Designers targeting carbon efficiency per unit of structural performance should focus on this region rather than the lowest-GWP corner of the Pareto front.
 
+#### Full mix composition profile along the Pareto front
+
+To understand what drives this efficiency optimum, we tracked how every ingredient's share of total mix mass evolves from the low-carbon extreme (GWP ≈ 139 kg CO₂/m³) to the high-strength extreme (GWP ≈ 278 kg CO₂/m³), binned into 20 GWP intervals across 1,500 pooled Pareto solutions.
+
+![Full mix composition profile: ingredient fractions, total binder & SC%, strength & GWP/strength ratio](results/figures/pareto_composition_profile.png)
+
+The blue-shaded band (GWP ≈ 209–224 kg CO₂/m³) marks the **efficiency optimum zone** — where the GWP/strength ratio reaches its minimum (2.31–2.33 kg CO₂/MPa).
+
+Key observations across the three panels:
+
+- **Panel 1 (ingredient fractions):** Coarse and fine aggregates together occupy ~74–85% of total mix mass throughout — their combined share is the most stable dimension of the design space. The real competition happens within the ~18% binder fraction: SC steadily replaces PC as GWP rises, peaking in the efficiency-optimum zone.
+- **Panel 2 (total binder & SC%):** SC fraction of total mix peaks at ~13% inside the optimum zone, then declines slightly as further strength gains require more PC. Total binder rises monotonically with GWP, confirming that binder quantity — not binder type — is the primary GWP driver (Spearman r = +0.927 between total binder and GWP).
+- **Panel 3 (strength & ratio):** The GWP/strength ratio (purple dashes) reaches its valley in the optimum zone, where strength is already high (~91–96 MPa) but GWP has not yet climbed steeply. Beyond this zone, each additional unit of GWP yields diminishing strength returns as PC must substitute for SC.
+
+| Relationship | Pearson r | Interpretation |
+|:--|:--:|:--|
+| Total binder → GWP | +0.927 | Binder quantity is the primary GWP lever |
+| Total binder → 28-day strength | +0.937 | Binder quantity also drives strength |
+| SC% → GWP/strength ratio | −0.485 | Higher SC% improves carbon efficiency |
+| SC% → GWP | +0.709 | SC% correlates with GWP (moderate) |
+
+**Design guideline:** target SC ≈ 13% of total mix mass (≈ 67% of binder) and total binder ≈ 450–465 kg/m³ to land in the efficiency-optimum zone. Pushing binder higher gains ≤5 MPa more strength at the cost of a 30% increase in PC share and a 27% worse GWP/strength ratio.
+
 ---
 
 ### Step 6 — Extended Baseline Comparison at 500 Generations
@@ -478,6 +503,18 @@ Curves are truncated at each method's mean convergence generation. Terminal mark
 
 Attainment curves (mean ± 1 SD) computed across all replicates. FLAME's converged Pareto front dominates NSGA-II's across the mid-to-high GWP region (≥ 180 kg CO₂/m³), where the LLM's domain-guided proposals most effectively seed the high-strength, low-w/b corner.
 
+### Step 8 — Validation Against Real-World Engineering Practice
+
+To assess whether FLAME's optimized designs are practically relevant, we compare the FLAME Pareto front against 667 real-world concrete mixes drawn from a published dataset of mixes actually used by engineers in practice.
+
+**Key result:** FLAME's global non-dominated set (pooled across 30 replicates) dominates **666 / 667 (99.9%)** of the real-world mixes — for nearly every historical design, FLAME found a mix with equal or lower GWP *and* equal or higher 28-day strength.
+
+> **Methodological note:** The dataset was used solely for post-hoc validation and played no role in the optimization process. FLAME's objective functions are based on mechanistic GWP formulas and a CatBoost surrogate model trained independently; the 667-mix dataset was never seen by the optimizer. This follows the validation approach of Coello & Lechuga (2002), who compared their MOPSO Pareto front against manufacturer product catalogs to demonstrate practical utility.
+
+![FLAME Pareto front vs. real-world dataset mixes](results/figures/pareto_vs_dataset.png)
+
+Grey points are the 667 historical mixes; the blue curve is the FLAME attainment mean ± 1 SD across 30 replicates. The FLAME Pareto front lies above and to the left of virtually all dataset points, indicating that FLAME consistently identifies trade-off solutions that outperform existing engineering practice on both objectives simultaneously.
+
 ---
 
 ## Evaluation Metrics
@@ -530,13 +567,15 @@ Average pairwise Euclidean distance between all Pareto front solutions in normal
 │   │   ├── nsweep_final.png          # N-sweep ΔHV comparison (Step 1)
 │   │   ├── step42_composition.png    # Material composition: full vs w/o KT
 │   │   ├── step42_elite_effect.png   # frac_useful + diversity: full vs w/o Elite
-│   │   ├── pareto_gwp_decomposition.png  # Step 5: GWP vs binder content + GWP vs SC%
-│   │   ├── gwp_strength_ratio_pf.png # Step 5: Pareto front coloured by GWP/strength ratio
+│   │   ├── pareto_gwp_decomposition.png      # Step 5: GWP vs binder content + GWP vs SC%
+│   │   ├── gwp_strength_ratio_pf.png         # Step 5: Pareto front coloured by GWP/strength ratio
+│   │   ├── pareto_composition_profile.png    # Step 5: Full mix composition profile along Pareto front
 │   │   ├── pareto_500gen_4way.png    # Step 6: 4-way Pareto + HV at 500gen
 │   │   ├── conv_4way_hv.png          # Step 6: 4-way HV curves to each method's convergence
 │   │   ├── conv_4way_pf.png          # Step 6: 4-way Pareto front at convergence
 │   │   ├── conv_part1_hv.png         # Step 7: HV curves to convergence (FLAME 220gen, NSGA-II 280gen)
-│   │   └── conv_part1_pf.png         # Step 7: Pareto front attainment at convergence
+│   │   ├── conv_part1_pf.png         # Step 7: Pareto front attainment at convergence
+│   │   └── pareto_vs_dataset.png     # Step 8: FLAME Pareto front vs 667 real-world mixes
 │   ├── nsweep_n{05,10,15,20,25}_rep{01-30}/  # N-sweep hybrid runs
 │   ├── grid_everyg_hyb_rep{01-30}/   # N=5 hybrid runs (reused as N=5 in N-sweep)
 │   ├── grid_everyg_base_rep{01-30}/  # Baseline NSGA-II runs (shared across experiments)
