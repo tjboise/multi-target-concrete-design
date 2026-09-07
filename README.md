@@ -443,17 +443,6 @@ To assess FLAME's advantage beyond the 100-generation window used in Steps 1–4
 - **MOPSO** — Multi-Objective Particle Swarm Optimization
 - **MOEA/D** — Multi-Objective Evolutionary Algorithm with Decomposition
 
-#### At 500 generations (fixed budget)
-
-| Method | N gen | N reps | Mean HV | % improvement rate at gen 400→500 |
-|:--|:--:|:--:|:--:|:--:|
-| **FLAME** | 500 | 30 | **0.936** | ~0% (converged) |
-| NSGA-II | 500 | 30 | 0.904 | ~1.2% |
-| MOPSO | 500 | 30 | 0.836 | ~2.8% |
-| MOEA/D | 500 | 30 | 0.829 | ~9.2% (not yet converged) |
-
-![4-way Pareto front and HV convergence at 500 generations](results/figures/pareto_500gen_4way.png)
-
 #### At each method's own convergence (W=30, ΔHV<0.002)
 
 Each method is evaluated until it meets the convergence criterion, removing the fixed-budget assumption.
@@ -570,7 +559,6 @@ Average pairwise Euclidean distance between all Pareto front solutions in normal
 │   │   ├── pareto_gwp_decomposition.png      # Step 5: GWP vs binder content + GWP vs SC%
 │   │   ├── gwp_strength_ratio_pf.png         # Step 5: Pareto front coloured by GWP/strength ratio
 │   │   ├── pareto_composition_profile.png    # Step 5: Full mix composition profile along Pareto front
-│   │   ├── pareto_500gen_4way.png    # Step 6: 4-way Pareto + HV at 500gen
 │   │   ├── conv_4way_hv.png          # Step 6: 4-way HV curves to each method's convergence
 │   │   ├── conv_4way_pf.png          # Step 6: 4-way Pareto front at convergence
 │   │   ├── conv_part1_hv.png         # Step 7: HV curves to convergence (FLAME 220gen, NSGA-II 280gen)
